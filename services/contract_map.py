@@ -8,47 +8,48 @@ from __future__ import annotations
 
 from typing import Optional
 
-from ib_insync import Contract, Crypto, Forex, Index, Stock
+try:
+    from ib_insync import Contract, Crypto, Forex, Index, Stock
+    def _stock(sym):  return Stock(sym,  "SMART", "USD")
+    def _contfut(sym, exch): return Contract(secType="CONTFUT", symbol=sym, exchange=exch, currency="USD")
+    _IB_OK = True
+except ImportError:
+    _IB_OK = False
 
 # Tuple: (ib_contract, what_to_show, use_rth)
-_MAP: dict[str, Optional[tuple]] = {
-    # ── ETFs / Equities (SMART routing) ───────────────────────────────────────
-    "SPY":      (Stock("SPY",  "SMART", "USD"),  "TRADES",    True),
-    "QQQ":      (Stock("QQQ",  "SMART", "USD"),  "TRADES",    True),
-    "DIA":      (Stock("DIA",  "SMART", "USD"),  "TRADES",    True),
-    "IWM":      (Stock("IWM",  "SMART", "USD"),  "TRADES",    True),
-    "GLD":      (Stock("GLD",  "SMART", "USD"),  "TRADES",    True),
-    "SLV":      (Stock("SLV",  "SMART", "USD"),  "TRADES",    True),
-    "TLT":      (Stock("TLT",  "SMART", "USD"),  "TRADES",    True),
-    "XLE":      (Stock("XLE",  "SMART", "USD"),  "TRADES",    True),
-    "XLF":      (Stock("XLF",  "SMART", "USD"),  "TRADES",    True),
-    "XLK":      (Stock("XLK",  "SMART", "USD"),  "TRADES",    True),
-    "XLV":      (Stock("XLV",  "SMART", "USD"),  "TRADES",    True),
-    "AAPL":     (Stock("AAPL", "SMART", "USD"),  "TRADES",    True),
-    "NVDA":     (Stock("NVDA", "SMART", "USD"),  "TRADES",    True),
-    "TSLA":     (Stock("TSLA", "SMART", "USD"),  "TRADES",    True),
-    "MSFT":     (Stock("MSFT", "SMART", "USD"),  "TRADES",    True),
-    "XOM":      (Stock("XOM",  "SMART", "USD"),  "TRADES",    True),
-    "SMH":      (Stock("SMH",  "SMART", "USD"),  "TRADES",    True),
-    # ── Continuous Futures (CONTFUT) ──────────────────────────────────────────
-    # Front-month continuous series — back-adjusted by IBKR.
-    # Futures trade outside regular hours (useRTH=False).
-    "GC=F":     (Contract(secType="CONTFUT", symbol="GC", exchange="COMEX", currency="USD"), "TRADES", False),
-    "SI=F":     (Contract(secType="CONTFUT", symbol="SI", exchange="COMEX", currency="USD"), "TRADES", False),
-    "CL=F":     (Contract(secType="CONTFUT", symbol="CL", exchange="NYMEX", currency="USD"), "TRADES", False),
-    "BZ=F":     (Contract(secType="CONTFUT", symbol="BZ", exchange="NYMEX", currency="USD"), "TRADES", False),
-    "DX-Y.NYB": (Contract(secType="CONTFUT", symbol="DX", exchange="NYBOT", currency="USD"), "TRADES", False),
-    # ── Forex ─────────────────────────────────────────────────────────────────
-    "EURUSD=X": (Forex("EURUSD"),                               "MIDPOINT", False),
-    # ── Index ─────────────────────────────────────────────────────────────────
-    # VIX index — live quote available with CBOE market data subscription.
-    "^VIX":     (Index("VIX", "CBOE", "USD"),                   "TRADES",   True),
-    # ── Crypto ────────────────────────────────────────────────────────────────
-    # Requires IBKR Crypto market data subscription (PAXOS exchange).
-    # Will return status="unsupported" if account lacks permissions.
-    "BTC-USD":  (Crypto("BTC", "PAXOS", "USD"),                 "AGGTRADES", False),
-    "ETH-USD":  (Crypto("ETH", "PAXOS", "USD"),                 "AGGTRADES", False),
-}
+# When ib_insync is unavailable all entries resolve to None → yfinance fallback
+if _IB_OK:
+    _MAP: dict[str, Optional[tuple]] = {
+        "SPY":      (_stock("SPY"),  "TRADES", True),
+        "QQQ":      (_stock("QQQ"),  "TRADES", True),
+        "DIA":      (_stock("DIA"),  "TRADES", True),
+        "IWM":      (_stock("IWM"),  "TRADES", True),
+        "GLD":      (_stock("GLD"),  "TRADES", True),
+        "SLV":      (_stock("SLV"),  "TRADES", True),
+        "TLT":      (_stock("TLT"),  "TRADES", True),
+        "XLE":      (_stock("XLE"),  "TRADES", True),
+        "XLF":      (_stock("XLF"),  "TRADES", True),
+        "XLK":      (_stock("XLK"),  "TRADES", True),
+        "XLV":      (_stock("XLV"),  "TRADES", True),
+        "AAPL":     (_stock("AAPL"), "TRADES", True),
+        "NVDA":     (_stock("NVDA"), "TRADES", True),
+        "TSLA":     (_stock("TSLA"), "TRADES", True),
+        "MSFT":     (_stock("MSFT"), "TRADES", True),
+        "XOM":      (_stock("XOM"),  "TRADES", True),
+        "SMH":      (_stock("SMH"),  "TRADES", True),
+        "GC=F":     (_contfut("GC", "COMEX"), "TRADES", False),
+        "SI=F":     (_contfut("SI", "COMEX"), "TRADES", False),
+        "CL=F":     (_contfut("CL", "NYMEX"), "TRADES", False),
+        "BZ=F":     (_contfut("BZ", "NYMEX"), "TRADES", False),
+        "DX-Y.NYB": (_contfut("DX", "NYBOT"), "TRADES", False),
+        "EURUSD=X": (Forex("EURUSD"),                       "MIDPOINT",  False),
+        "^VIX":     (Index("VIX", "CBOE", "USD"),           "TRADES",    True),
+        "BTC-USD":  (Crypto("BTC", "PAXOS", "USD"),         "AGGTRADES", False),
+        "ETH-USD":  (Crypto("ETH", "PAXOS", "USD"),         "AGGTRADES", False),
+    }
+else:
+    # No ib_insync — all symbols fall back to yfinance
+    _MAP: dict[str, Optional[tuple]] = {}
 
 # Honest notes shown in the UI when a contract is unsupported at runtime
 _NOTES: dict[str, str] = {
