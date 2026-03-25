@@ -872,3 +872,17 @@ function timeAgo(ms) {
   if (m > 0) return `${m}m ago`;
   return 'just now';
 }
+
+// ── GitHub star count ─────────────────────────────────────────────────────────
+(function fetchGhStars() {
+  fetch('https://api.github.com/repos/akariba/Algo-RADAR')
+    .then(r => r.json())
+    .then(d => {
+      const n = d.stargazers_count;
+      if (n == null) return;
+      const label = n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+      const el = document.getElementById('gh-stars');
+      if (el) el.textContent = '★ ' + label;
+    })
+    .catch(() => {});
+})();
