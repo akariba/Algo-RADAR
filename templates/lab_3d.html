@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RADAR — 3D Research Lab</title>
+  <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #07101e;
+      --surface: #0c1828;
+      --panel:   #101f34;
+      --elevated:#152640;
+      --border:  #1c2f4a;
+      --border-hi:#274868;
+      --text:    #b4caeb;
+      --muted:   #4c6a8a;
+      --bright:  #dceeff;
+      --accent:  #3b7ae8;
+      --teal:    #00bfa0;
+      --pos:     #19b85a;
+      --neg:     #e53535;
+      --warn:    #e5980a;
+      --mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+      --sans: "Inter", system-ui, sans-serif;
+      --r: 4px;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text);
+                 font-family: var(--sans); font-size: 13px; overflow: hidden; }
+
+    /* ── top bar ── */
+    #topbar {
+      height: 44px; background: #060e1b; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center;
+    }
+    #lab-brand {
+      padding: 0 18px; font-weight: 700; font-size: 12px; letter-spacing: .14em;
+      color: var(--teal); border-right: 1px solid var(--border); height: 100%;
+      display: flex; align-items: center; background: #0a162a;
+      text-shadow: 0 0 16px rgba(0,191,160,.35);
+    }
+    #lab-title { padding: 0 16px; font-size: 11px; font-weight: 600;
+                 letter-spacing: .06em; color: var(--muted); text-transform: uppercase; flex: 1; }
+    #back-link {
+      padding: 0 14px; font-size: 9.5px; font-weight: 700; font-family: var(--mono);
+      letter-spacing: .1em; color: var(--muted); border-left: 1px solid var(--border);
+      height: 100%; display: flex; align-items: center; text-decoration: none;
+      text-transform: uppercase; transition: color .15s;
+    }
+    #back-link:hover { color: var(--accent); }
+
+    /* ── warning banner ── */
+    #lab-banner {
+      padding: 5px 20px; background: rgba(229,152,10,.07);
+      border-bottom: 1px solid rgba(229,152,10,.2);
+      font-size: 10.5px; color: #c07a08; text-align: center; letter-spacing: .02em;
+    }
+
+    /* ── layout ── */
+    #page {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      height: calc(100vh - 44px - 28px);
+    }
+
+    /* ── sidebar: controls + explanations ── */
+    #sidebar {
+      background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow-y: auto;
+    }
+    #sidebar::-webkit-scrollbar { width: 3px; }
+    #sidebar::-webkit-scrollbar-thumb { background: var(--border-hi); }
+
+    .side-section {
+      padding: 12px 14px; border-bottom: 1px solid var(--border);
+    }
+    .side-label {
+      font-size: 9px; font-weight: 700; letter-spacing: .09em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+    }
+    .ctrl-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+    .ctrl-row   { display: flex; align-items: center; gap: 8px; }
+    .ctrl-name  { font-size: 10px; color: var(--muted); min-width: 70px; }
+    .ctrl-val   { font-family: var(--mono); font-size: 10px; color: var(--bright);
+                  min-width: 36px; text-align: right; }
+
+    select, input[type=range] {
+      background: var(--elevated); border: 1px solid var(--border);
+      color: var(--text); font-size: 11px; font-family: var(--mono);
+      padding: 3px 7px; border-radius: var(--r); outline: none; width: 100%;
+    }
+    select:focus, input[type=range]:focus { border-color: var(--accent); }
+    input[type=range] { padding: 0; height: 4px; cursor: pointer;
+                        accent-color: var(--accent); }
+
+    .btn-row { display: flex; gap: 4px; flex-wrap: wrap; }
+    .mini-btn {
+      background: var(--elevated); border: 1px solid var(--border);
+      color: var(--muted); font-size: 9px; font-family: var(--mono);
+      font-weight: 700; letter-spacing: .06em; padding: 3px 8px;
+      border-radius: var(--r); cursor: pointer; transition: all .1s;
+    }
+    .mini-btn:hover { border-color: var(--border-hi); color: var(--text); }
+    .mini-btn.active { background: var(--accent); border-color: var(--accent);
+                       color: #fff; }
+    .mini-btn.teal   { background: rgba(0,191,160,.1); border-color: var(--teal);
+                       color: var(--teal); }
+
+    /* explanations */
+    .explain-head { font-size: 10px; font-weight: 600; color: var(--text); margin-bottom: 5px; }
+    .explain-text { font-size: 10.5px; color: var(--muted); line-height: 1.55; }
+    .data-status  {
+      display: inline-block; margin-top: 6px; font-size: 9px; font-weight: 700;
+      letter-spacing: .07em; text-transform: uppercase;
+      padding: 1px 7px; border-radius: var(--r);
+    }
+    .ds-live    { background: rgba(25,184,90,.12); color: var(--pos); }
+    .ds-derived { background: rgba(59,122,232,.12); color: var(--accent); }
+    .ds-scenario{ background: rgba(229,152,10,.12); color: var(--warn); }
+
+    /* chart area */
+    #chart-area {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-rows: 1fr;
+      overflow: hidden;
+    }
+
+    .chart-card {
+      background: var(--surface); border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .chart-card:last-child { border-right: none; }
+
+    .chart-card-header {
+      padding: 6px 14px 5px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .chart-num {
+      font-family: var(--mono); font-size: 9px; font-weight: 700;
+      color: var(--teal); margin-right: 6px; letter-spacing: .05em;
+    }
+    .chart-card-title {
+      font-size: 10px; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--muted); display: inline;
+    }
+    .chart-card-sub {
+      font-size: 9.5px; color: var(--muted); margin-top: 2px; opacity: .75;
+    }
+
+    .chart-container { flex: 1; min-height: 0; position: relative; }
+    .chart-div       { width: 100%; height: 100%; }
+
+    .chart-footer {
+      padding: 3px 14px; font-size: 9px; color: var(--muted); font-family: var(--mono);
+      border-top: 1px solid var(--border); background: var(--panel); flex-shrink: 0;
+      opacity: .7;
+    }
+
+    .chart-loading {
+      position: absolute; inset: 0; display: flex; align-items: center;
+      justify-content: center; font-size: 11px; color: var(--muted); gap: 8px;
+      background: var(--surface);
+    }
+    .chart-loading.hidden { display: none; }
+
+    .spinner {
+      width: 18px; height: 18px; border: 2px solid var(--border-hi);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* status line */
+    #status-line { font-size: 9.5px; font-family: var(--mono); color: var(--muted);
+                   padding: 4px 14px; }
+  </style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="lab-brand">RADAR</div>
+  <div id="lab-title">3D Research Lab — Experimental</div>
+  <a id="back-link" href="/">← Radar</a>
+</div>
+<div id="lab-banner">
+  Experimental 3D research views — NOT primary execution screens &nbsp;·&nbsp;
+  Rotate · zoom · reset each chart &nbsp;·&nbsp; Use 2D projections for cleaner reading
+</div>
+
+<div id="page">
+
+  <!-- ── sidebar ── -->
+  <div id="sidebar">
+
+    <div class="side-section">
+      <div class="side-label">Instrument</div>
+      <select id="ctrl-symbol" onchange="onSymbolChange()"><option>Loading…</option></select>
+    </div>
+
+    <!-- Chart 1 controls -->
+    <div class="side-section">
+      <div class="side-label">① Density Surface</div>
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-name">Horizon</span>
+          <select id="ctrl-horizon" onchange="buildDensitySurface()">
+            <option value="20" selected>20 bars</option>
+            <option value="40">40 bars</option>
+            <option value="10">10 bars</option>
+          </select>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-name">Space</span>
+          <select id="ctrl-space" onchange="buildDensitySurface()">
+            <option value="return">Return %</option>
+            <option value="price">Price</option>
+          </select>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="mini-btn active" id="btn1-3d" onclick="setMode(1,'3d',this)">3D</button>
+        <button class="mini-btn" id="btn1-2d" onclick="setMode(1,'2d',this)">2D Heatmap</button>
+        <button class="mini-btn" onclick="setView('density','perspective')">⟳ Reset</button>
+        <button class="mini-btn" onclick="setView('density','top')">Top</button>
+        <button class="mini-btn" onclick="setView('density','side')">Side</button>
+      </div>
+      <div style="margin-top:8px">
+        <div class="explain-head">What this shows</div>
+        <div class="explain-text">
+          Where price‑return probability mass concentrates over time.
+          Wider cone = higher volatility. Asymmetric tails indicate
+          skewed distributions from the GBM drift term.
+        </div>
+        <span class="data-status ds-derived">DERIVED FROM LIVE PARAMETERS</span>
+      </div>
+    </div>
+
+    <!-- Chart 2 controls -->
+    <div class="side-section">
+      <div class="side-label">② Regime Surface</div>
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-name">Z metric</span>
+          <select id="ctrl-axis2" onchange="buildRegimeSurface()">
+            <option value="conviction">Conviction</option>
+            <option value="rr">Risk/Reward</option>
+            <option value="expected_5d">Expected 5D%</option>
+          </select>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="mini-btn active" id="btn2-3d" onclick="setMode(2,'3d',this)">3D</button>
+        <button class="mini-btn" id="btn2-2d" onclick="setMode(2,'2d',this)">2D Heatmap</button>
+        <button class="mini-btn" onclick="setView('regime','perspective')">⟳ Reset</button>
+      </div>
+      <div style="margin-top:8px">
+        <div class="explain-head">What this shows</div>
+        <div class="explain-text">
+          How signal strength varies across volatility regimes and asset classes.
+          Flat surface = robust across regimes. Sharp drop in "Extreme" column
+          = model is regime‑sensitive and should be avoided in vol spikes.
+        </div>
+        <span class="data-status ds-live">LIVE OPPORTUNITY DATA</span>
+      </div>
+    </div>
+
+    <!-- Chart 3 controls -->
+    <div class="side-section">
+      <div class="side-label">③ Portfolio Stress</div>
+      <div class="ctrl-group">
+        <div class="ctrl-row">
+          <span class="ctrl-name">Eq range</span>
+          <input type="range" id="sl-eq" min="10" max="50" value="30"
+                 oninput="document.getElementById('val-eq').textContent=this.value+'%'; buildStressSurface()">
+          <span class="ctrl-val" id="val-eq">30%</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-name">Vol range</span>
+          <input type="range" id="sl-vol" min="50" max="200" value="150"
+                 oninput="document.getElementById('val-vol').textContent=this.value+'%'; buildStressSurface()">
+          <span class="ctrl-val" id="val-vol">150%</span>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-name">Positions</span>
+          <select id="ctrl-portfolio" onchange="buildStressSurface()">
+            <option value="top5">Top 5 signals</option>
+            <option value="top3">Top 3 signals</option>
+            <option value="all">All signals</option>
+          </select>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="mini-btn active" id="btn3-3d" onclick="setMode(3,'3d',this)">3D</button>
+        <button class="mini-btn" id="btn3-2d" onclick="setMode(3,'2d',this)">2D Heatmap</button>
+        <button class="mini-btn" onclick="setView('stress','perspective')">⟳ Reset</button>
+        <button class="mini-btn" onclick="setView('stress','top')">Top</button>
+      </div>
+      <div style="margin-top:8px">
+        <div class="explain-head">What this shows</div>
+        <div class="explain-text">
+          Portfolio P&amp;L under a 2-factor shock grid (equity × vol).
+          Red zones = drawdown. Teal zones = hedged position gains.
+          Look for <strong style="color:#b4caeb">asymmetry</strong> — does the portfolio lose more in down-shocks than it gains in up-shocks?
+        </div>
+        <span class="data-status ds-scenario">SCENARIO MODEL</span>
+      </div>
+    </div>
+
+    <div class="side-section">
+      <div id="status-line">Loading…</div>
+    </div>
+
+  </div><!-- /sidebar -->
+
+  <!-- ── chart grid ── -->
+  <div id="chart-area">
+
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <span class="chart-num">01</span>
+        <span class="chart-card-title">Forecast Density</span>
+        <div class="chart-card-sub">Return probability distribution over horizon</div>
+      </div>
+      <div class="chart-container">
+        <div class="chart-loading" id="load-density"><div class="spinner"></div>Computing…</div>
+        <div class="chart-div" id="chart-density"></div>
+      </div>
+      <div class="chart-footer" id="foot-density">
+        GBM lognormal · μ from expected_5d · σ from realized_vol
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <span class="chart-num">02</span>
+        <span class="chart-card-title">Regime × Asset Class</span>
+        <div class="chart-card-sub">Signal strength across vol regimes and asset classes</div>
+      </div>
+      <div class="chart-container">
+        <div class="chart-loading" id="load-regime"><div class="spinner"></div>Computing…</div>
+        <div class="chart-div" id="chart-regime"></div>
+      </div>
+      <div class="chart-footer">Z = selected metric · Vol regimes from realized_vol quartiles</div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <span class="chart-num">03</span>
+        <span class="chart-card-title">Portfolio Stress / P&amp;L</span>
+        <div class="chart-card-sub">Equity shock × vol shock — factor model</div>
+      </div>
+      <div class="chart-container">
+        <div class="chart-loading" id="load-stress"><div class="spinner"></div>Computing…</div>
+        <div class="chart-div" id="chart-stress"></div>
+      </div>
+      <div class="chart-footer" id="foot-stress">
+        Equity-vol corr ≈ −0.65 · Beta by asset class · Top-5 positions
+      </div>
+    </div>
+
+  </div><!-- /chart-area -->
+</div><!-- /page -->
+
+<script src="/static/js/lab3d.js"></script>
+</body>
+</html>

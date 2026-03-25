@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SYBIL — Backtest Research</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="/static/css/backtest.css">
+  <script src="https://cdn.plot.ly/plotly-2.26.0.min.js" defer></script>
+</head>
+<body class="bt-page">
+
+<div id="bt-app">
+
+  <!-- ── HEADER ─────────────────────────────────────────────────────────── -->
+  <header id="bt-header">
+    <div id="bt-brand">
+      <a href="/" class="bt-home-link">← RADAR</a>
+      <span class="bt-sep">/</span>
+      <span class="bt-title">Backtest Research</span>
+    </div>
+    <div id="bt-run-status"></div>
+  </header>
+
+  <!-- ── MAIN LAYOUT ────────────────────────────────────────────────────── -->
+  <div id="bt-layout">
+
+    <!-- ── CONTROLS SIDEBAR ───────────────────────────────────────────── -->
+    <aside id="bt-controls">
+
+      <div class="ctrl-section">
+        <div class="ctrl-label">Instrument</div>
+        <input id="ctrl-ticker" class="ctrl-input" type="text" value="SPY" maxlength="12"
+               placeholder="SPY, QQQ, GLD…" autocomplete="off" spellcheck="false">
+      </div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-label">Benchmark</div>
+        <input id="ctrl-benchmark" class="ctrl-input" type="text" value="SPY" maxlength="12"
+               placeholder="SPY" autocomplete="off" spellcheck="false">
+      </div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-label">Strategy</div>
+        <select id="ctrl-strategy" class="ctrl-select">
+          <option value="regime_adaptive_trend" selected>Regime Adaptive Trend</option>
+          <option value="mean_reversion">Mean Reversion</option>
+          <option value="momentum_breakout">Momentum Breakout</option>
+          <option value="volatility_filtered">Volatility Filtered Trend</option>
+        </select>
+      </div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-label">Date Range</div>
+        <div class="ctrl-date-presets">
+          <button class="date-preset" data-preset="ytd"  onclick="setDatePreset('ytd',  this)">YTD</button>
+          <button class="date-preset" data-preset="1y"   onclick="setDatePreset('1y',   this)">1Y</button>
+          <button class="date-preset" data-preset="3y"   onclick="setDatePreset('3y',   this)">3Y</button>
+          <button class="date-preset active" data-preset="5y" onclick="setDatePreset('5y', this)">5Y</button>
+          <button class="date-preset" data-preset="full" onclick="setDatePreset('full', this)">FULL</button>
+        </div>
+        <div class="ctrl-date-inputs">
+          <input id="ctrl-start" class="ctrl-input ctrl-date" type="date">
+          <span class="ctrl-date-sep">—</span>
+          <input id="ctrl-end"   class="ctrl-input ctrl-date" type="date">
+        </div>
+      </div>
+
+      <div class="ctrl-section" id="ctrl-advanced-section">
+        <div class="ctrl-label ctrl-label-toggle" onclick="toggleAdvanced(this)">
+          Advanced <span class="ctrl-arrow">▸</span>
+        </div>
+        <div id="ctrl-advanced" class="ctrl-advanced hidden">
+
+          <div class="ctrl-row">
+            <label class="ctrl-sub-label">Fast EMA</label>
+            <input id="ctrl-fast" class="ctrl-input ctrl-num" type="number" value="12" min="2" max="100">
+          </div>
+          <div class="ctrl-row">
+            <label class="ctrl-sub-label">Slow EMA</label>
+            <input id="ctrl-slow" class="ctrl-input ctrl-num" type="number" value="26" min="5" max="200">
+          </div>
+          <div class="ctrl-row">
+            <label class="ctrl-sub-label">Stop ATR</label>
+            <input id="ctrl-stop-atr" class="ctrl-input ctrl-num" type="number" value="2.0" min="0.5" max="10" step="0.5">
+          </div>
+          <div class="ctrl-row">
+            <label class="ctrl-sub-label">Target ATR</label>
+            <input id="ctrl-target-atr" class="ctrl-input ctrl-num" type="number" value="4.0" min="1" max="20" step="0.5">
+          </div>
+          <div class="ctrl-row">
+            <label class="ctrl-sub-label">IS Split</label>
+            <input id="ctrl-is-pct" class="ctrl-input ctrl-num" type="number" value="70" min="50" max="90" step="5">
+            <span class="ctrl-unit">%</span>
+          </div>
+          <div class="ctrl-row">
+            <label class="ctrl-sub-label">Vol Filter</label>
+            <label class="ctrl-toggle">
+              <input id="ctrl-vol-filter" type="checkbox" checked>
+              <span class="ctrl-toggle-track"></span>
+            </label>
+          </div>
+
+        </div>
+      </div>
+
+      <button id="btn-run" class="btn-run" onclick="runBacktest()">Run Backtest</button>
+
+      <div id="bt-meta" class="bt-meta hidden">
+        <div class="meta-row"><span class="meta-k">Strategy</span><span class="meta-v" id="meta-strategy">—</span></div>
+        <div class="meta-row"><span class="meta-k">Symbol</span><span class="meta-v" id="meta-symbol">—</span></div>
+        <div class="meta-row"><span class="meta-k">Bars</span><span class="meta-v" id="meta-bars">—</span></div>
+        <div class="meta-row"><span class="meta-k">IS Split</span><span class="meta-v" id="meta-is-split">—</span></div>
+        <div class="meta-row"><span class="meta-k">Cost/Side</span><span class="meta-v" id="meta-cost">—</span></div>
+        <div class="meta-row"><span class="meta-k">Execution</span><span class="meta-v" id="meta-exec">—</span></div>
+      </div>
+
+    </aside>
+
+    <!-- ── RIGHT CONTENT ──────────────────────────────────────────────── -->
+    <div id="bt-content">
+
+      <!-- ── TOP ROW: equity + drawdown ─────────────────────────────── -->
+      <div id="bt-row-equity">
+
+        <div class="bt-panel" id="panel-equity">
+          <div class="panel-header">
+            <span class="panel-title">Equity Curve</span>
+            <div class="panel-badges">
+              <span class="is-badge">IS</span>
+              <span class="oos-badge">OOS</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div data-role="idle"    class="panel-state">Run a backtest to see results.</div>
+            <div data-role="loading" class="panel-state hidden"><div class="spinner"></div>Running…</div>
+            <div data-role="error"   class="panel-state hidden state-error">Error loading equity curve.</div>
+            <div data-role="content" id="chart-equity" class="panel-chart hidden"></div>
+          </div>
+        </div>
+
+        <div class="bt-panel" id="panel-drawdown">
+          <div class="panel-header">
+            <span class="panel-title">Drawdown</span>
+          </div>
+          <div class="panel-body">
+            <div data-role="idle"    class="panel-state">—</div>
+            <div data-role="loading" class="panel-state hidden"><div class="spinner"></div></div>
+            <div data-role="error"   class="panel-state hidden state-error">—</div>
+            <div data-role="content" id="chart-drawdown" class="panel-chart hidden"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ── BOTTOM ROW: trades + metrics ──────────────────────────── -->
+      <div id="bt-row-bottom">
+
+        <!-- Trades panel with tabs -->
+        <div class="bt-panel" id="panel-trades">
+          <div class="panel-header">
+            <span class="panel-title">Trades</span>
+            <div class="panel-tabs">
+              <button class="panel-tab active" data-tab="dist"  onclick="switchTab('trades','dist',  this)">Distribution</button>
+              <button class="panel-tab"        data-tab="list"  onclick="switchTab('trades','list',  this)">Trade Log</button>
+              <button class="panel-tab"        data-tab="regime" onclick="switchTab('trades','regime',this)">By Regime</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div data-role="idle"    class="panel-state">—</div>
+            <div data-role="loading" class="panel-state hidden"><div class="spinner"></div></div>
+            <div data-role="error"   class="panel-state hidden state-error">—</div>
+            <div data-role="content" class="hidden">
+
+              <!-- Distribution tab -->
+              <div id="tab-trades-dist" class="tab-pane active">
+                <div id="chart-dist" class="panel-chart-short"></div>
+                <div id="dist-stats" class="dist-stats-grid"></div>
+              </div>
+
+              <!-- Trade log tab -->
+              <div id="tab-trades-list" class="tab-pane hidden">
+                <div class="trade-log-wrapper">
+                  <table id="trade-log-table" class="trade-log-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Side</th>
+                        <th>Entry</th>
+                        <th>Exit</th>
+                        <th>Return</th>
+                        <th>Hold</th>
+                        <th>Exit Reason</th>
+                        <th>Regime</th>
+                      </tr>
+                    </thead>
+                    <tbody id="trade-log-body"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Regime breakdown tab -->
+              <div id="tab-trades-regime" class="tab-pane hidden">
+                <div id="chart-regime" class="panel-chart-short"></div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Metrics + Research Notes panel -->
+        <div class="bt-panel" id="panel-metrics">
+          <div class="panel-header">
+            <span class="panel-title">Metrics &amp; Research Notes</span>
+            <div class="panel-tabs">
+              <button class="panel-tab active" data-tab="metrics" onclick="switchTab('metrics','metrics',this)">Metrics</button>
+              <button class="panel-tab"        data-tab="notes"   onclick="switchTab('metrics','notes',  this)">Notes</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div data-role="idle"    class="panel-state">—</div>
+            <div data-role="loading" class="panel-state hidden"><div class="spinner"></div></div>
+            <div data-role="error"   class="panel-state hidden state-error">—</div>
+            <div data-role="content" class="hidden">
+
+              <div id="tab-metrics-metrics" class="tab-pane active">
+                <div class="metrics-section-label">Performance</div>
+                <div id="metrics-perf-grid" class="metrics-grid"></div>
+                <div class="metrics-section-label">Risk</div>
+                <div id="metrics-risk-grid" class="metrics-grid"></div>
+                <div class="metrics-section-label">Robustness (IS vs OOS)</div>
+                <div id="metrics-robust-grid" class="metrics-grid"></div>
+              </div>
+
+              <div id="tab-metrics-notes" class="tab-pane hidden">
+                <div id="notes-summary"   class="notes-block"></div>
+                <div id="notes-strengths" class="notes-block"></div>
+                <div id="notes-weaknesses" class="notes-block"></div>
+                <div id="notes-next"      class="notes-block"></div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /bt-row-bottom -->
+
+    </div><!-- /bt-content -->
+
+  </div><!-- /bt-layout -->
+
+</div><!-- /bt-app -->
+
+<script src="/static/js/backtest.js"></script>
+</body>
+</html>

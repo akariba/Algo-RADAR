@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cross-Asset Opportunity Radar</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <script src="https://cdn.plot.ly/plotly-2.26.0.min.js" defer></script>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ── A: TAPE STRIP ────────────────────────────────────────────────────── -->
+  <header id="tape-strip">
+    <div id="tape-brand">RADAR</div>
+    <div id="tape-scroll-wrapper">
+      <div id="tape-items">
+        <div class="tape-item" style="color:var(--text-dim);padding:0 16px;align-self:center">
+          Loading market tape…
+        </div>
+      </div>
+    </div>
+    <!-- IBKR connection badge — always visible -->
+    <div id="ibkr-badge" class="ibkr-badge disconnected" title="IBKR connection status">
+      IBKR —
+    </div>
+    <a id="lab-link" href="/lab/3d" title="3D Research Lab — experimental views">3D Lab</a>
+    <a id="bt-link" href="/research/backtest" title="Strategy Backtest &amp; Research">Backtest</a>
+    <div id="tape-status"></div>
+  </header>
+
+  <!-- ── MAIN GRID (radar | detail) ──────────────────────────────────────── -->
+  <div id="main-grid">
+
+    <!-- ── B: OPPORTUNITY RADAR ─────────────────────────────────────────── -->
+    <div id="radar-panel">
+      <div id="radar-header">
+        <h2>Opportunity Radar</h2>
+        <span id="radar-count"></span>
+      </div>
+
+      <div data-role="loading" class="inline-state">
+        <div class="spinner"></div>Computing signals…
+      </div>
+      <div data-role="error"   class="inline-state error   hidden">Radar unavailable.</div>
+      <div data-role="timeout" class="inline-state timeout hidden">Opportunity radar — request timed out.</div>
+      <div data-role="empty"   class="inline-state hidden">No opportunities computed.</div>
+
+      <div data-role="content" id="radar-body" style="visibility:hidden"></div>
+    </div>
+
+    <!-- ── C: SELECTED INSTRUMENT ──────────────────────────────────────── -->
+    <div id="detail-panel">
+
+      <div id="detail-header">
+        <span id="detail-rank" class="detail-rank" title="Rank in current opportunity list"></span>
+        <span id="detail-title">SPDR S&amp;P 500 ETF Trust</span>
+        <span id="detail-symbol-badge">SPY</span>
+        <span id="detail-change"></span>
+        <span id="mds-chip" class="mds-chip" title="Market data status for this instrument"></span>
+      </div>
+
+      <!-- actionability bar — answers "should I trade this right now?" -->
+      <div id="action-bar">
+        <div class="action-cell">
+          <span class="action-label">Bias</span>
+          <span class="dir-badge" id="ab-bias">—</span>
+        </div>
+        <div class="action-cell">
+          <span class="action-label">Setup</span>
+          <span class="action-value" id="ab-setup">—</span>
+        </div>
+        <div class="action-cell">
+          <span class="action-label">Actionability</span>
+          <span class="act-badge" id="ab-action">—</span>
+        </div>
+        <div class="action-cell">
+          <span class="action-label">Entry Quality</span>
+          <span class="eq-badge" id="ab-entry">—</span>
+        </div>
+        <div class="action-cell action-cell-wide">
+          <span class="action-label">Trigger</span>
+          <span class="action-trigger" id="ab-trigger">—</span>
+        </div>
+      </div>
+
+      <!-- chart toolbar: timeframe + toggles -->
+      <div id="chart-toolbar">
+        <div id="tf-buttons">
+          <button class="tf-btn active" data-tf="1d" onclick="selectTf('1d',this)">1D</button>
+          <button class="tf-btn" data-tf="1w" onclick="selectTf('1w',this)">1W</button>
+          <button class="tf-btn" data-tf="1h" onclick="selectTf('1h',this)">1H</button>
+          <button class="tf-btn" data-tf="5m" onclick="selectTf('5m',this)">5M</button>
+        </div>
+        <div id="chart-toggles">
+          <button class="chart-toggle active" id="tog-gbm" onclick="toggleGbm(this)" title="GBM forecast cone">GBM</button>
+          <button class="chart-toggle active" id="tog-vol" onclick="toggleVol(this)" title="Volume subplot">VOL</button>
+        </div>
+        <span id="tf-label"></span>
+      </div>
+
+      <!-- chart area -->
+      <div id="chart-panel" style="flex:1;position:relative;min-height:0;overflow:hidden;display:flex;flex-direction:column;">
+
+        <div data-role="loading" class="panel-state">
+          <div class="spinner"></div>Loading chart…
+        </div>
+        <div data-role="error"   class="panel-state hidden state-error">Chart unavailable.</div>
+        <div data-role="timeout" class="panel-state hidden state-timeout">Chart — request timed out.</div>
+        <div data-role="empty"   class="panel-state hidden state-empty">No chart data available.</div>
+
+        <div data-role="content" id="price-chart" style="flex:1;visibility:hidden;"></div>
+      </div>
+
+      <!-- ── context bar ────────────────────────────────────────────────── -->
+      <div id="context-bar">
+        <div class="ctx-cell">
+          <span class="ctx-label">Last</span>
+          <span class="ctx-value" id="ctx-last">—</span>
+        </div>
+        <div class="ctx-cell">
+          <span class="ctx-label">Session</span>
+          <span class="ctx-value" id="ctx-chg">—</span>
+        </div>
+        <div class="ctx-cell">
+          <span class="ctx-label">% 20D High</span>
+          <span class="ctx-value" id="ctx-high20">—</span>
+        </div>
+        <div class="ctx-cell">
+          <span class="ctx-label">% 20D Low</span>
+          <span class="ctx-value" id="ctx-low20">—</span>
+        </div>
+        <div class="ctx-cell">
+          <span class="ctx-label">Real. Vol</span>
+          <span class="ctx-value" id="ctx-rvol">—</span>
+        </div>
+        <div class="ctx-cell">
+          <span class="ctx-label">ATR</span>
+          <span class="ctx-value" id="ctx-atr">—</span>
+        </div>
+        <div class="ctx-cell">
+          <span class="ctx-label">Suggested Sz</span>
+          <span class="ctx-value" id="ctx-size">—</span>
+        </div>
+        <div class="ctx-cell">
+          <span class="ctx-label">Regime</span>
+          <span class="regime-chip" id="ctx-regime">—</span>
+        </div>
+      </div>
+
+      <!-- ── trade structure box ─────────────────────────────────────────── -->
+      <div id="trade-box">
+        <div id="trade-box-header">
+          <span>Trade Structure</span>
+          <span id="ts-direction-badge" class="dir-badge">—</span>
+        </div>
+        <div id="trade-cells">
+          <div class="trade-cell">
+            <span class="trade-label">Entry Zone</span>
+            <span class="trade-val" id="ts-entry">—</span>
+          </div>
+          <div class="trade-cell">
+            <span class="trade-label">Invalidation</span>
+            <span class="trade-val danger" id="ts-invalid">—</span>
+          </div>
+          <div class="trade-cell">
+            <span class="trade-label">Target 1</span>
+            <span class="trade-val pos" id="ts-t1">—</span>
+          </div>
+          <div class="trade-cell">
+            <span class="trade-label">Target 2</span>
+            <span class="trade-val pos" id="ts-t2">—</span>
+          </div>
+          <div class="trade-cell">
+            <span class="trade-label">Size</span>
+            <span class="trade-val" id="ts-size">—</span>
+          </div>
+          <div class="trade-cell">
+            <span class="trade-label">R / R</span>
+            <span class="trade-val" id="ts-rr">—</span>
+          </div>
+          <div class="trade-cell">
+            <span class="trade-label">Trigger</span>
+            <span class="trade-val" id="ts-trigger">—</span>
+          </div>
+          <div class="trade-cell trade-cell-wide">
+            <span class="trade-label">Risk Note</span>
+            <span class="trade-val dim" id="ts-note">—</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /detail-panel -->
+  </div><!-- /main-grid -->
+
+  <!-- ── BOTTOM GRID (news | why-now) ─────────────────────────────────────── -->
+  <div id="bottom-grid">
+
+    <!-- ── D: NEWS ──────────────────────────────────────────────────────── -->
+    <div id="news-panel">
+      <div id="news-header">
+        <h3>Headlines</h3>
+        <span id="news-instrument-label"></span>
+      </div>
+      <div id="news-list">
+        <div class="inline-state">Select an instrument to load headlines.</div>
+      </div>
+    </div>
+
+    <!-- ── E: WHY NOW ───────────────────────────────────────────────────── -->
+    <div id="whynow-panel">
+      <div id="whynow-header">
+        <h3>Why Now?</h3>
+      </div>
+      <div id="whynow-bullets">
+        <div class="inline-state">Select an instrument.</div>
+      </div>
+    </div>
+
+  </div><!-- /bottom-grid -->
+
+</div><!-- /app -->
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
