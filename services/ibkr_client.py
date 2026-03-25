@@ -44,14 +44,24 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from ib_insync import IB, util
+try:
+    from ib_insync import IB, util
+    _IB_AVAILABLE = True
+except Exception:
+    IB = None
+    util = None
+    _IB_AVAILABLE = False
 
 from .contract_map import get_note, resolve
 
 logger = logging.getLogger(__name__)
 
-# Apply nest_asyncio so run_until_complete() can be nested inside the worker.
-util.startLoop()
+# Apply nest_asyncio only if ib_insync loaded successfully
+if _IB_AVAILABLE and util is not None:
+    try:
+        util.startLoop()
+    except Exception:
+        pass
 
 # ── config ────────────────────────────────────────────────────────────────────
 IBKR_HOST      = os.environ.get("IBKR_HOST",               "127.0.0.1")
@@ -65,7 +75,7 @@ _executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ibkr")
 # Outer lock: prevents two Flask threads from queuing overlapping IB jobs.
 _lock = threading.Lock()
 
-_ib: IB = IB()
+_ib = IB() if _IB_AVAILABLE else None
 
 _last_connect_attempt: float = 0.0
 _RECONNECT_COOLDOWN = 30.0
@@ -175,6 +185,9 @@ async def _gather_hist(tasks_info: list[tuple]) -> list:
 
 def get_connection_status() -> dict:
     """Non-blocking status check; attempts lazy connect inside executor."""
+    if not _IB_AVAILABLE:
+        return {"connected": False, "host": IBKR_HOST, "port": IBKR_PORT,
+                "client_id": IBKR_CLIENT_ID}
     with _lock:
         connected = _executor.submit(_ensure_connected).result(timeout=10)
     return {
@@ -190,6 +203,9 @@ def get_bulk_quotes(symbols: list[str]) -> list[dict]:
     Parallel last-session prices for all symbols via reqHistoricalDataAsync.
     Runs entirely inside the dedicated IB executor thread.
     """
+    if not _IB_AVAILABLE:
+        return [_error_quote("ib_insync not available") for _ in symbols]
+
     def _task() -> list[dict]:
         if not _ensure_connected():
             return [_error_quote("IBKR not connected") for _ in symbols]
@@ -240,6 +256,9 @@ def get_bulk_quotes(symbols: list[str]) -> list[dict]:
 
 def get_live_quote(symbol: str) -> dict:
     """Latest price for one instrument via 3-day daily bars."""
+    if not _IB_AVAILABLE:
+        return _error_quote("ib_insync not available")
+
     def _task() -> dict:
         if not _ensure_connected():
             return _error_quote("IBKR not connected")
@@ -290,6 +309,9 @@ def get_historical_bars_tf(symbol: str, tf: str = "1d") -> Optional[list]:
     tf: "5m" | "1h" | "4h" | "1d" | "1w"
     Returns ib_insync BarData list, or None on failure / unsupported symbol.
     """
+    if not _IB_AVAILABLE:
+        return None
+
     bar_size, duration = _TF_IBKR.get(tf, _TF_IBKR["1d"])
 
     def _task() -> Optional[list]:
