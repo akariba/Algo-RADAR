@@ -430,7 +430,7 @@ def opportunities():
 # ── main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    port    = int(os.environ.get("APP_PORT", "5055"))
+    port    = int(os.environ.get("PORT", os.environ.get("APP_PORT", "5055")))
     status  = ibkr.get_connection_status()
     ib_ok   = "CONNECTED ✓" if status["connected"] else "DISCONNECTED — page loads, check TWS"
     print(f"""
