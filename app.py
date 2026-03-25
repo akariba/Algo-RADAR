@@ -306,6 +306,21 @@ def tape():
     results = []
     for sym, q in zip(TAPE_SYMBOLS, quotes):
         inst = _UNIVERSE_MAP.get(sym, {"symbol": sym, "name": sym})
+        # ── yfinance fallback for symbols IBKR can't serve (e.g. PAXOS crypto) ──
+        if q.get("status") == "error" or q.get("price") is None:
+            try:
+                import yfinance as yf
+                tk   = yf.Ticker(sym)
+                hist = tk.history(period="2d", interval="1d", auto_adjust=True)
+                if hist is not None and len(hist) >= 2:
+                    p0   = float(hist["Close"].iloc[-2])
+                    p1   = float(hist["Close"].iloc[-1])
+                    chg  = p1 - p0
+                    pct  = chg / p0 if p0 else 0.0
+                    q = {"price": round(p1, 4), "change": round(chg, 4),
+                         "change_pct": round(pct, 6), "source": "yfinance", "status": "ok"}
+            except Exception:
+                pass
         results.append({
             "symbol":     inst.get("display", sym),
             "yf_symbol":  sym,
