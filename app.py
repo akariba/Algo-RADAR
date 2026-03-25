@@ -168,7 +168,53 @@ def _tag_news(title: str) -> str:
     return "market"
 
 
+import requests as _requests
+
 # ── routes ────────────────────────────────────────────────────────────────────
+
+@app.route("/api/ai/research", methods=["POST"])
+def ai_research():
+    data = request.get_json(silent=True) or {}
+    question = (data.get("question") or "").strip()
+    context  = (data.get("context")  or "").strip()
+    if not question:
+        return jsonify({"error": "No question provided"}), 400
+
+    api_key = os.environ.get("PERPLEXITY_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "Perplexity API key not configured"}), 503
+
+    system_prompt = (
+        "You are a concise, institutional-grade market research assistant embedded in "
+        "a cross-asset trading radar platform. Answer in 3-5 sentences maximum. "
+        "Focus on actionable market insights, macro context, and risk factors. "
+        "Avoid disclaimers. Be direct and data-driven."
+    )
+    if context:
+        system_prompt += f"\n\nCurrent instrument context: {context}"
+
+    try:
+        resp = _requests.post(
+            "https://api.perplexity.ai/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "sonar",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": question},
+                ],
+                "max_tokens": 300,
+                "temperature": 0.2,
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        answer = resp.json()["choices"][0]["message"]["content"]
+        return jsonify({"answer": answer})
+    except Exception as exc:
+        logger.warning("[ai] perplexity error: %s", exc)
+        return jsonify({"error": str(exc)}), 502
+
 
 @app.route("/")
 def index():

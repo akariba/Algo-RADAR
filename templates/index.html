@@ -222,6 +222,34 @@
 
 </div><!-- /app -->
 
+<!-- ── AI RESEARCH ASSISTANT ─────────────────────────────────────────────── -->
+<button id="ai-fab" onclick="toggleAiPanel()" title="AI Research Assistant">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2z"/>
+    <path d="M12 6v6l4 2"/>
+  </svg>
+  AI
+</button>
+
+<div id="ai-panel" class="ai-panel hidden">
+  <div id="ai-header">
+    <span>AI Research Assistant</span>
+    <span id="ai-model-tag">Perplexity Sonar</span>
+    <button id="ai-close" onclick="toggleAiPanel()">✕</button>
+  </div>
+  <div id="ai-messages"></div>
+  <div id="ai-suggestions">
+    <button class="ai-suggest" onclick="aiSuggest(this)">What's driving oil prices today?</button>
+    <button class="ai-suggest" onclick="aiSuggest(this)">Macro outlook for gold this week?</button>
+    <button class="ai-suggest" onclick="aiSuggest(this)">Analyse the current VIX level</button>
+  </div>
+  <div id="ai-input-row">
+    <input id="ai-input" type="text" placeholder="Ask about markets, instruments, macro…" onkeydown="if(event.key==='Enter')sendAiMessage()">
+    <button id="ai-send" onclick="sendAiMessage()">↑</button>
+  </div>
+</div>
+
 <script src="/static/js/app.js"></script>
+<script src="/static/js/ai_chat.js"></script>
 </body>
 </html>
