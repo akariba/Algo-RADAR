@@ -40,7 +40,7 @@ from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 
 import services.ibkr_client as ibkr
-from services.backtest import run_backtest
+from services.backtest import run_backtest, run_wfo
 from services.contract_map import mapped_symbols
 from services.signals import (
     build_trade_structure,
@@ -250,6 +250,31 @@ def api_backtest():
         result = run_backtest(params)
     except Exception as exc:
         logger.exception("[backtest] error: %s", exc)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify(result)
+
+
+@app.route("/api/backtest/wfo")
+def api_backtest_wfo():
+    """Walk-Forward Optimisation endpoint — returns per-fold metrics + stitched OOS equity."""
+    params = {
+        "strategy":   request.args.get("strategy",   "regime_adaptive_trend"),
+        "ticker":     request.args.get("ticker",      "SPY").upper(),
+        "start":      request.args.get("start",       ""),
+        "end":        request.args.get("end",         ""),
+        "fast":       int(request.args.get("fast",    12)),
+        "slow":       int(request.args.get("slow",    26)),
+        "stop_atr":   float(request.args.get("stop_atr",   2.0)),
+        "target_atr": float(request.args.get("target_atr", 4.0)),
+        "vol_filter": request.args.get("vol_filter",  "true").lower() == "true",
+        "n_folds":    int(request.args.get("n_folds",   5)),
+        "oos_ratio":  float(request.args.get("oos_ratio", 0.30)),
+        "wfo_mode":   request.args.get("wfo_mode",    "rolling"),
+    }
+    try:
+        result = run_wfo(params)
+    except Exception as exc:
+        logger.exception("[wfo] error: %s", exc)
         return jsonify({"ok": False, "error": str(exc)}), 500
     return jsonify(result)
 

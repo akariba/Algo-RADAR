@@ -30,7 +30,10 @@ import yfinance as yf
 
 logger = logging.getLogger(__name__)
 
-COST_PER_SIDE = 0.0005   # 0.05% per leg = 0.10% round trip
+BASE_COST_PER_SIDE = 0.0002   # 2 bps base spread per leg
+MARKET_IMPACT_K    = 0.10    # price-impact coefficient: k * sqrt(size/ADV)
+# Legacy constant kept for backward compatibility in unit tests
+COST_PER_SIDE = BASE_COST_PER_SIDE
 
 
 # ── indicator series ─────────────────────────────────────────────────────────
@@ -221,8 +224,27 @@ _STRAT_FN = {
 
 # ── trade simulator ──────────────────────────────────────────────────────────
 
+def _cost_per_side(entry_price: float, avg_volume: float) -> float:
+    """
+    Transaction cost per side = base spread + market impact.
+    impact = k * sqrt(notional_fraction / ADV_fraction)
+    For a 100%-equity position: notional_fraction = 1.0, ADV is shares/day.
+    We proxy ADV as avg_volume / entry_price to get ADV in dollar terms,
+    then compute impact relative to a $100k reference account.
+    """
+    if avg_volume > 0 and entry_price > 0:
+        adv_dollars = avg_volume * entry_price
+        notional    = 100_000.0   # reference account size
+        impact      = MARKET_IMPACT_K * math.sqrt(notional / max(adv_dollars, 1.0))
+        impact      = min(impact, 0.0050)   # cap at 50 bps per side
+    else:
+        impact = 0.0003
+    return BASE_COST_PER_SIDE + impact
+
+
 def _simulate(closes, highs, lows, opens, dates,
-              regimes, raw_sigs, stop_dists, tgt_dists) -> tuple:
+              regimes, raw_sigs, stop_dists, tgt_dists,
+              volumes=None) -> tuple:
     """
     Execute trades bar-by-bar.
     Signal at bar i close → enter at bar i+1 OPEN.
@@ -232,6 +254,8 @@ def _simulate(closes, highs, lows, opens, dates,
     equity   = np.ones(n, dtype=float)
     position = None   # None | dict
     trades   = []
+    # rolling 20-day average volume for market-impact cost model
+    vol_arr  = volumes if volumes is not None else np.zeros(n)
 
     for i in range(1, n):
         was_flat = position is None
@@ -265,7 +289,9 @@ def _simulate(closes, highs, lows, opens, dates,
                     exit_p, reason = opens[i], 'reversal'
 
             if exit_p is not None:
-                ret = side * (exit_p / entry - 1) - 2 * COST_PER_SIDE
+                avg_vol = float(np.mean(vol_arr[max(0, i - 20):i])) if i > 0 else 0.0
+                cost    = _cost_per_side(entry, avg_vol)
+                ret = side * (exit_p / entry - 1) - 2 * cost
                 equity[i] = equity[i - 1] * (1 + ret)
                 trades.append({
                     'date':         str(dates[i])[:10],
@@ -305,10 +331,12 @@ def _simulate(closes, highs, lows, opens, dates,
 
     # Close any open position at final bar
     if position is not None:
-        side  = position['side']
-        entry = position['entry']
-        ep    = float(closes[-1])
-        ret   = side * (ep / entry - 1) - 2 * COST_PER_SIDE
+        side    = position['side']
+        entry   = position['entry']
+        ep      = float(closes[-1])
+        avg_vol = float(np.mean(vol_arr[max(0, n - 20):n])) if n > 0 else 0.0
+        cost    = _cost_per_side(entry, avg_vol)
+        ret     = side * (ep / entry - 1) - 2 * cost
         equity[-1] = equity[-2] * (1 + ret)
         trades.append({
             'date':         str(dates[-1])[:10],
@@ -350,6 +378,54 @@ def _monthly_returns(equity: np.ndarray, dates) -> list:
     return ret
 
 
+# ── utilities (needed by metrics block) ──────────────────────────────────────
+
+def _r(v) -> Optional[float]:
+    """Round to 4dp; return None for NaN/Inf."""
+    if v is None:
+        return None
+    try:
+        f = float(v)
+        return None if (math.isnan(f) or math.isinf(f)) else round(f, 4)
+    except (TypeError, ValueError):
+        return None
+
+
+def _deflated_sharpe(daily_ret: np.ndarray, n_trials: int = 4) -> Optional[float]:
+    """
+    Deflated Sharpe Ratio (Bailey & Lopez de Prado 2014).
+
+    Accounts for multiple strategy testing by deflating the observed Sharpe
+    by the expected maximum Sharpe under the null of no skill.
+
+    Returns DSR ∈ [0, 1] (probability that the strategy has a positive SR).
+    """
+    from scipy.stats import norm as _norm
+    T = len(daily_ret)
+    if T < 30:
+        return None
+    std = daily_ret.std()
+    if std == 0:
+        return None
+    sr_hat_obs = float(daily_ret.mean() / std)   # per-observation SR
+
+    gamma3 = float(np.mean((daily_ret - daily_ret.mean()) ** 3) / (std ** 3 + 1e-12))
+    gamma4 = float(np.mean((daily_ret - daily_ret.mean()) ** 4) / (std ** 4 + 1e-12))
+    excess_kurt = gamma4 - 3.0
+
+    # Expected maximum SR under H0 for n_trials strategies
+    euler_gamma = 0.5772156649
+    z1 = _norm.ppf(1.0 - 1.0 / max(n_trials, 1))
+    z2 = _norm.ppf(1.0 - 1.0 / (max(n_trials, 1) * np.e))
+    sr_star_obs = (1 - euler_gamma) * z1 + euler_gamma * z2
+
+    denom_sq = 1.0 - gamma3 * sr_hat_obs + (excess_kurt / 4.0) * sr_hat_obs ** 2
+    if denom_sq <= 0:
+        denom_sq = 1.0
+    z_stat = (sr_hat_obs - sr_star_obs) * np.sqrt(T - 1) / np.sqrt(max(denom_sq, 1e-10))
+    return _r(float(_norm.cdf(z_stat)))
+
+
 # ── metrics block ─────────────────────────────────────────────────────────────
 
 def _metrics_block(equity: np.ndarray, dates) -> dict:
@@ -371,11 +447,13 @@ def _metrics_block(equity: np.ndarray, dates) -> dict:
     pos_months = sum(1 for m in monthly if m > 0) / len(monthly) if monthly else 0.5
     best_m    = float(max(monthly)) if monthly else 0.0
     worst_m   = float(min(monthly)) if monthly else 0.0
+    dsr = _deflated_sharpe(daily_ret, n_trials=4)
     return {
         'total_return':        _r(total_ret),
         'cagr':                _r(cagr),
         'sharpe':              _r(sharpe),
         'sortino':             _r(sortino),
+        'deflated_sharpe':     dsr,
         'annualized_vol':      _r(vol_ann),
         'max_drawdown':        _r(max_dd),
         'average_drawdown':    _r(avg_dd),
@@ -500,31 +578,305 @@ def _generate_notes(metrics: dict, trade_stats: dict, regime_breakdown: list) ->
     }
 
 
-# ── utilities ─────────────────────────────────────────────────────────────────
-
-def _r(v) -> Optional[float]:
-    """Round to 4dp; return None for NaN/Inf."""
-    if v is None:
-        return None
-    try:
-        f = float(v)
-        return None if (math.isnan(f) or math.isinf(f)) else round(f, 4)
-    except (TypeError, ValueError):
-        return None
-
+# ── clean trades helper ───────────────────────────────────────────────────────
 
 def _clean_trades(trades: list, symbol: str, inst_name: str) -> list:
+    """Attach symbol/name and sanitise numeric fields on each trade dict."""
     out = []
     for t in trades:
         t['symbol']          = symbol
         t['instrument_name'] = inst_name
-        # sanitise
         t['return_pct']  = _r(t.get('return_pct'))
         t['pnl']         = _r(t.get('pnl'))
         t['entry']       = _r(t.get('entry'))
         t['exit']        = _r(t.get('exit'))
         out.append(t)
     return out
+
+
+# ── monte carlo simulation ────────────────────────────────────────────────────
+
+def _monte_carlo(trades: list, n_sims: int = 1000) -> dict:
+    """
+    Monte Carlo trade-sequence permutation.
+
+    Shuffles the observed trade return sequence n_sims times to produce
+    a distribution of equity curves. Returns percentile bands.
+    """
+    if len(trades) < 2:
+        return {'ok': False, 'reason': 'need ≥2 trades'}
+
+    rets = np.array([t['return_pct'] / 100.0 for t in trades], dtype=float)
+    n    = len(rets)
+    rng  = np.random.default_rng(42)
+
+    # matrix: n_sims × n
+    shuffled = np.stack([rng.permutation(rets) for _ in range(n_sims)])
+    # equity curves: cumulative product
+    eq_matrix = np.cumprod(1.0 + shuffled, axis=1)
+
+    p5  = np.percentile(eq_matrix, 5,  axis=0)
+    p50 = np.percentile(eq_matrix, 50, axis=0)
+    p95 = np.percentile(eq_matrix, 95, axis=0)
+
+    # Observed equity curve (ordered as-traded)
+    eq_obs = float(np.prod(1.0 + rets))
+
+    return {
+        'ok':                True,
+        'n_sims':            n_sims,
+        'n_trades':          n,
+        'p5':                [_r(float(v)) for v in p5],
+        'p50':               [_r(float(v)) for v in p50],
+        'p95':               [_r(float(v)) for v in p95],
+        'final_p5':          _r(float(p5[-1])),
+        'final_p50':         _r(float(p50[-1])),
+        'final_p95':         _r(float(p95[-1])),
+        'observed_final':    _r(eq_obs),
+        'pct_sims_beat_obs': _r(float(np.mean(eq_matrix[:, -1] < eq_obs))),
+    }
+
+
+# ── bias warnings ─────────────────────────────────────────────────────────────
+
+def _bias_warnings(trades: list, strategy: str, raw_sigs: np.ndarray) -> list:
+    """
+    Detect common statistical and structural biases.
+
+    Returns a list of warning dicts with 'type', 'severity', and 'message'.
+    """
+    warnings_out = []
+    n = len(trades)
+
+    if n < 30:
+        warnings_out.append({
+            'type':     'insufficient_trades',
+            'severity': 'HIGH',
+            'message':  (f"Only {n} trades — minimum 30 required for statistically robust "
+                         f"conclusions. Extend the backtest period or loosen signal filters."),
+        })
+
+    # Check signal density (too many signals = potential data snooping)
+    sig_nonzero = int(np.sum(raw_sigs != 0))
+    sig_pct     = sig_nonzero / max(len(raw_sigs), 1)
+    if sig_pct > 0.50:
+        warnings_out.append({
+            'type':     'overtrading',
+            'severity': 'MEDIUM',
+            'message':  (f"Signal fires on {sig_pct*100:.0f}% of bars — high signal density "
+                         f"may indicate overfit parameters or lookahead exposure."),
+        })
+
+    # All current strategies use next-bar-open execution; flag is always False
+    if strategy in ('regime_adaptive_trend', 'mean_reversion',
+                    'momentum_breakout', 'volatility_filtered'):
+        lookahead = False
+    else:
+        lookahead = True  # conservative for unknown strategies
+
+    if lookahead:
+        warnings_out.append({
+            'type':     'lookahead_bias',
+            'severity': 'HIGH',
+            'message':  ("Unknown strategy execution model — potential same-bar lookahead. "
+                         "Verify that signals use only past close data and entries use next-bar open."),
+        })
+
+    return warnings_out
+
+
+# ── walk-forward optimisation ─────────────────────────────────────────────────
+
+def _run_single_fold(closes, highs, lows, opens, volumes, dates, regimes,
+                     strategy, fast, slow, stop_atr, target_atr, vol_filter,
+                     label: str) -> dict:
+    """Run signals + simulation on a single fold slice. Returns metrics + trades."""
+    sig_fn = _STRAT_FN.get(strategy, _sig_rat)
+    raw_sigs, stop_dists, tgt_dists = sig_fn(
+        closes, highs, lows, opens, volumes,
+        fast, slow, stop_atr, target_atr, vol_filter,
+    )
+    equity, trades = _simulate(closes, highs, lows, opens, dates,
+                               regimes, raw_sigs, stop_dists, tgt_dists, volumes)
+    m = _metrics_block(equity, dates)
+    return {
+        'label':   label,
+        'metrics': m,
+        'trades':  trades,
+        'equity':  equity,
+        'dates':   dates,
+    }
+
+
+def run_wfo(params: dict) -> dict:
+    """
+    Walk-Forward Optimisation entry point.
+
+    Splits the price history into n_folds equal chunks.
+    For each fold:
+      - IS  = first (1 - oos_ratio) of the chunk (rolling) or [start, fold_end-oos] (anchored)
+      - OOS = last oos_ratio of the chunk
+
+    Returns per-fold metrics and a stitched OOS equity curve.
+    """
+    strategy    = params.get('strategy',   'regime_adaptive_trend')
+    ticker      = params.get('ticker',     'SPY').upper()
+    start       = params.get('start',      '')
+    end         = params.get('end',        '')
+    fast        = max(2, int(params.get('fast',   12)))
+    slow        = max(fast + 1, int(params.get('slow', 26)))
+    stop_atr    = max(0.1, float(params.get('stop_atr',   2.0)))
+    target_atr  = max(0.1, float(params.get('target_atr', 4.0)))
+    vol_filter  = str(params.get('vol_filter', 'true')).lower() == 'true'
+    n_folds     = max(3, min(10, int(params.get('n_folds',   5))))
+    oos_ratio   = max(0.10, min(0.40, float(params.get('oos_ratio', 0.30))))
+    wfo_mode    = params.get('wfo_mode', 'rolling')   # 'rolling' | 'anchored'
+
+    if strategy not in _STRAT_FN:
+        strategy = 'regime_adaptive_trend'
+
+    # ── download data ──────────────────────────────────────────────────────
+    try:
+        tk   = yf.Ticker(ticker)
+        hist = tk.history(start=start or None, end=end or None,
+                          period='max' if not start else None,
+                          interval='1d', auto_adjust=True)
+    except Exception as exc:
+        return {'ok': False, 'error': f"Price download failed: {exc}"}
+
+    if hist is None or hist.empty or len(hist) < 100:
+        return {'ok': False, 'error': f"Insufficient data ({len(hist) if hist is not None else 0} bars, need ≥100)"}
+
+    closes  = hist['Close'].values.astype(float)
+    highs   = hist['High'].values.astype(float)
+    lows    = hist['Low'].values.astype(float)
+    opens   = hist['Open'].values.astype(float)
+    volumes = hist['Volume'].values.astype(float)
+    dates   = [str(d)[:10] for d in hist.index]
+    n       = len(closes)
+
+    ema12   = _ema_s(closes, 12)
+    ema26   = _ema_s(closes, 26)
+    rsi     = _rsi_s(closes, 14)
+    rvol    = _rvol_s(closes, 20)
+    regimes = _regime_s(ema12, ema26, rsi, rvol)
+
+    # ── build fold boundaries ──────────────────────────────────────────────
+    fold_size = n // n_folds
+    folds_out = []
+    oos_eq_stitched = []
+    oos_dates_stitched = []
+    all_oos_sharpes = []
+
+    for k in range(n_folds):
+        if wfo_mode == 'anchored':
+            # IS always starts at 0; OOS is next chunk
+            oos_start_idx = int(n * (k + 1) / n_folds) - int(fold_size * oos_ratio)
+            oos_end_idx   = int(n * (k + 1) / n_folds)
+            is_start_idx  = 0
+            is_end_idx    = oos_start_idx
+        else:
+            # Rolling: slide IS window forward
+            chunk_start  = k * fold_size
+            chunk_end    = chunk_start + fold_size if k < n_folds - 1 else n
+            oos_len      = max(10, int((chunk_end - chunk_start) * oos_ratio))
+            is_start_idx = chunk_start
+            is_end_idx   = chunk_end - oos_len
+            oos_start_idx = is_end_idx
+            oos_end_idx   = chunk_end
+
+        if is_end_idx - is_start_idx < 30 or oos_end_idx - oos_start_idx < 10:
+            continue
+
+        def _sl(arr, a, b):
+            return arr[a:b]
+
+        is_fold = _run_single_fold(
+            _sl(closes, is_start_idx, is_end_idx),
+            _sl(highs,  is_start_idx, is_end_idx),
+            _sl(lows,   is_start_idx, is_end_idx),
+            _sl(opens,  is_start_idx, is_end_idx),
+            _sl(volumes, is_start_idx, is_end_idx),
+            dates[is_start_idx:is_end_idx],
+            regimes[is_start_idx:is_end_idx],
+            strategy, fast, slow, stop_atr, target_atr, vol_filter,
+            label=f'IS fold {k + 1}',
+        )
+        oos_fold = _run_single_fold(
+            _sl(closes, oos_start_idx, oos_end_idx),
+            _sl(highs,  oos_start_idx, oos_end_idx),
+            _sl(lows,   oos_start_idx, oos_end_idx),
+            _sl(opens,  oos_start_idx, oos_end_idx),
+            _sl(volumes, oos_start_idx, oos_end_idx),
+            dates[oos_start_idx:oos_end_idx],
+            regimes[oos_start_idx:oos_end_idx],
+            strategy, fast, slow, stop_atr, target_atr, vol_filter,
+            label=f'OOS fold {k + 1}',
+        )
+
+        is_sh  = is_fold['metrics'].get('sharpe', 0) or 0
+        oos_sh = oos_fold['metrics'].get('sharpe', 0) or 0
+        deg    = ((is_sh - oos_sh) / is_sh) if is_sh > 0 else None
+        all_oos_sharpes.append(oos_sh)
+
+        # Stitch OOS equity into running curve (normalised to previous endpoint)
+        scale = oos_eq_stitched[-1] if oos_eq_stitched else 1.0
+        for v in oos_fold['equity']:
+            oos_eq_stitched.append(_r(float(v) * scale))
+        oos_dates_stitched.extend(dates[oos_start_idx:oos_end_idx])
+
+        folds_out.append({
+            'fold':       k + 1,
+            'is_start':   dates[is_start_idx],
+            'is_end':     dates[is_end_idx - 1],
+            'oos_start':  dates[oos_start_idx],
+            'oos_end':    dates[oos_end_idx - 1],
+            'is_bars':    is_end_idx - is_start_idx,
+            'oos_bars':   oos_end_idx - oos_start_idx,
+            'is_metrics': is_fold['metrics'],
+            'oos_metrics': oos_fold['metrics'],
+            'is_trades':  len(is_fold['trades']),
+            'oos_trades': len(oos_fold['trades']),
+            'degradation': _r(deg),
+        })
+
+    if not folds_out:
+        return {'ok': False, 'error': 'No valid folds could be constructed from the data'}
+
+    valid_sh = [s for s in all_oos_sharpes if s is not None]
+    avg_oos_sh  = float(np.mean(valid_sh)) if valid_sh else 0.0
+    std_oos_sh  = float(np.std(valid_sh))  if len(valid_sh) > 1 else 0.0
+    consistency = float(sum(1 for s in valid_sh if s > 0)) / len(valid_sh) if valid_sh else 0.0
+    degs        = [f['degradation'] for f in folds_out if f['degradation'] is not None]
+    avg_deg     = float(np.mean(degs)) if degs else 0.0
+
+    # Decimate stitched curve to ≤2000 points
+    m_pts = len(oos_eq_stitched)
+    step  = max(1, m_pts // 2000)
+    idxs  = list(range(0, m_pts, step))
+    if idxs and idxs[-1] != m_pts - 1:
+        idxs.append(m_pts - 1)
+
+    stitched_curve = [
+        {'date': oos_dates_stitched[i], 'equity': oos_eq_stitched[i]}
+        for i in idxs if i < len(oos_dates_stitched)
+    ]
+
+    return {
+        'ok':            True,
+        'mode':          wfo_mode,
+        'n_folds':       len(folds_out),
+        'ticker':        ticker,
+        'strategy':      strategy,
+        'folds':         folds_out,
+        'oos_equity':    stitched_curve,
+        'wfo_summary': {
+            'avg_oos_sharpe':    _r(avg_oos_sh),
+            'std_oos_sharpe':    _r(std_oos_sh),
+            'consistency_score': _r(consistency),
+            'avg_degradation':   _r(avg_deg),
+        },
+    }
 
 
 # ── main entry point ──────────────────────────────────────────────────────────
@@ -624,7 +976,7 @@ def run_backtest(params: dict) -> dict:
 
     # ── simulate trades ───────────────────────────────────────────────────────
     equity, trades = _simulate(closes, highs, lows, opens, dates,
-                               regimes, raw_sigs, stop_dists, tgt_dists)
+                               regimes, raw_sigs, stop_dists, tgt_dists, volumes)
 
     inst_name = ticker  # could look up from universe; keep simple here
     trades    = _clean_trades(trades, ticker, inst_name)
@@ -660,6 +1012,12 @@ def run_backtest(params: dict) -> dict:
     })
 
     notes = _generate_notes(full_m, trade_stats, regime_bd)
+
+    # ── bias warnings ─────────────────────────────────────────────────────────
+    bias_warnings = _bias_warnings(trades, strategy, raw_sigs)
+
+    # ── monte carlo (skip if <2 trades to avoid noise) ────────────────────────
+    mc = _monte_carlo(trades) if len(trades) >= 2 else {'ok': False, 'reason': 'no trades'}
 
     # ── build output arrays (limit size to 2000 points) ──────────────────────
     step = max(1, n // 2000)
@@ -702,7 +1060,7 @@ def run_backtest(params: dict) -> dict:
             'start_date':       dates[0],
             'end_date':         dates[-1],
             'is_split_date':    is_split_date,
-            'cost_per_side_pct': COST_PER_SIDE * 100,
+            'cost_per_side_pct': BASE_COST_PER_SIDE * 100,  # base spread only; market impact added per trade
             'execution':        'next_bar_open',
             'preset':           preset,
         },
@@ -716,4 +1074,6 @@ def run_backtest(params: dict) -> dict:
         'metrics':         full_m,
         'regime_breakdown': regime_bd,
         'notes':            notes,
+        'bias_warnings':   bias_warnings,
+        'monte_carlo':     mc,
     }

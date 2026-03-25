@@ -8,6 +8,7 @@
 // ── state ────────────────────────────────────────────────────────────────────
 let _lastResult = null;
 let _tabState   = { trades: 'dist', metrics: 'metrics' };
+let _runMode    = 'isoos';   // 'isoos' | 'wfo'
 
 // ── init ─────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
@@ -40,6 +41,14 @@ function setDatePreset(preset, btn) {
 
 function _fmtDate(d) {
   return d.toISOString().split('T')[0];
+}
+
+// ── run mode toggle ───────────────────────────────────────────────────────────
+function setRunMode(mode, btn) {
+  _runMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  document.getElementById('ctrl-wfo-section').classList.toggle('hidden', mode !== 'wfo');
 }
 
 // ── advanced toggle ───────────────────────────────────────────────────────────
@@ -80,31 +89,75 @@ function _setAllPanels(role) {
   ['panel-equity', 'panel-drawdown', 'panel-trades', 'panel-metrics'].forEach(id =>
     _setPanelState(id, role)
   );
+  if (role === 'loading') {
+    _setPanelState('panel-wfo', role);
+  }
 }
 
 // ── run ───────────────────────────────────────────────────────────────────────
-function runBacktest() {
-  const btn = document.getElementById('btn-run');
-  btn.disabled = true;
-  btn.textContent = 'Running…';
-
-  const status = document.getElementById('bt-run-status');
-  status.textContent = '';
-
-  _setAllPanels('loading');
-
-  const params = new URLSearchParams({
+function _commonParams() {
+  return {
     strategy:   document.getElementById('ctrl-strategy').value,
     ticker:     document.getElementById('ctrl-ticker').value.trim().toUpperCase() || 'SPY',
-    benchmark:  document.getElementById('ctrl-benchmark').value.trim().toUpperCase() || 'SPY',
     start:      document.getElementById('ctrl-start').value,
     end:        document.getElementById('ctrl-end').value,
     fast:       document.getElementById('ctrl-fast').value,
     slow:       document.getElementById('ctrl-slow').value,
     stop_atr:   document.getElementById('ctrl-stop-atr').value,
     target_atr: document.getElementById('ctrl-target-atr').value,
-    is_pct:     (parseFloat(document.getElementById('ctrl-is-pct').value) / 100).toFixed(2),
     vol_filter: document.getElementById('ctrl-vol-filter').checked ? 'true' : 'false',
+  };
+}
+
+function runBacktest() {
+  const btn = document.getElementById('btn-run');
+  btn.disabled    = true;
+  btn.textContent = 'Running…';
+
+  const status = document.getElementById('bt-run-status');
+  status.textContent = '';
+
+  // Hide WFO row; decide which to show after response
+  document.getElementById('bt-row-wfo').classList.add('hidden');
+  document.getElementById('bt-row-mc').classList.add('hidden');
+  document.getElementById('bias-warnings-banner').classList.add('hidden');
+
+  _setAllPanels('loading');
+
+  if (_runMode === 'wfo') {
+    const p = new URLSearchParams({
+      ..._commonParams(),
+      n_folds:   document.getElementById('ctrl-n-folds').value,
+      oos_ratio: (parseFloat(document.getElementById('ctrl-oos-ratio').value) / 100).toFixed(2),
+      wfo_mode:  document.getElementById('ctrl-wfo-mode').value,
+    });
+    fetch(`/api/backtest/wfo?${p}`)
+      .then(r => r.json())
+      .then(data => {
+        btn.disabled    = false;
+        btn.textContent = 'Run Backtest';
+        if (!data.ok) {
+          _setAllPanels('error');
+          status.textContent = data.error || 'WFO error';
+          return;
+        }
+        _lastResult = data;
+        _renderWfo(data);
+      })
+      .catch(err => {
+        btn.disabled    = false;
+        btn.textContent = 'Run Backtest';
+        _setAllPanels('error');
+        status.textContent = 'Network error: ' + err.message;
+      });
+    return;
+  }
+
+  // IS/OOS mode
+  const params = new URLSearchParams({
+    ..._commonParams(),
+    benchmark:  document.getElementById('ctrl-benchmark').value.trim().toUpperCase() || 'SPY',
+    is_pct:     (parseFloat(document.getElementById('ctrl-is-pct').value) / 100).toFixed(2),
   });
 
   fetch(`/api/backtest?${params}`)
@@ -134,6 +187,8 @@ function _renderAll(d) {
   _renderEquityChart(d.equity_curve, d.drawdown, d.meta);
   _renderTradesPanel(d.trades, d.distribution, d.regime_breakdown);
   _renderMetricsPanel(d.metrics, d.notes);
+  _renderBiasWarnings(d.bias_warnings || []);
+  _renderMonteCarlo(d.monte_carlo, d.trades);
 }
 
 // ── meta sidebar ─────────────────────────────────────────────────────────────
@@ -143,7 +198,7 @@ function _renderMeta(meta) {
   document.getElementById('meta-bars').textContent     = (meta.n_bars || 0).toLocaleString();
   document.getElementById('meta-is-split').textContent = meta.is_split_date  || '—';
   document.getElementById('meta-cost').textContent     = meta.cost_per_side_pct != null
-    ? (meta.cost_per_side_pct * 100).toFixed(2) + '%' : '—';
+    ? (+meta.cost_per_side_pct).toFixed(3) + '%' : '—';
   document.getElementById('meta-exec').textContent     = meta.execution || '—';
   document.getElementById('bt-meta').classList.remove('hidden');
 }
@@ -384,12 +439,17 @@ function _renderMetrics(m) {
   const risk = m.overfit_risk || 'LOW';
   const riskColor = risk === 'HIGH' ? '#e05252' : risk === 'MEDIUM' ? '#d4a03a' : '#00bfa0';
 
+  const dsrVal = m.deflated_sharpe != null
+    ? `<span title="Deflated Sharpe Ratio — probability of genuine skill after multiple-testing correction (Bailey &amp; Lopez de Prado 2014)">${(+m.deflated_sharpe * 100).toFixed(1)}%</span>`
+    : '—';
+
   const perfCells = [
-    { k: 'Total Return',   v: fmtPct(m.total_return) },
-    { k: 'CAGR',           v: fmtPct(m.cagr) },
-    { k: 'Sharpe',         v: fmt(m.sharpe, 2) },
-    { k: 'Sortino',        v: fmt(m.sortino, 2) },
-    { k: 'Ann. Vol',       v: fmtPct(m.annualized_vol) },
+    { k: 'Total Return',      v: fmtPct(m.total_return) },
+    { k: 'CAGR',              v: fmtPct(m.cagr) },
+    { k: 'Sharpe',            v: fmt(m.sharpe, 2) },
+    { k: 'Sortino',           v: fmt(m.sortino, 2) },
+    { k: 'DSR (skill prob.)', v: dsrVal },
+    { k: 'Ann. Vol',          v: fmtPct(m.annualized_vol) },
   ];
 
   const riskCells = [
@@ -433,6 +493,159 @@ function _renderNotes(notes) {
   _block('notes-strengths',  'Strengths',  notes.strengths  || []);
   _block('notes-weaknesses', 'Weaknesses', notes.weaknesses || []);
   _block('notes-next',       'Next Tests', notes.next_tests || []);
+}
+
+// ── bias warnings ─────────────────────────────────────────────────────────────
+function _renderBiasWarnings(warnings) {
+  const banner = document.getElementById('bias-warnings-banner');
+  if (!warnings || !warnings.length) {
+    banner.classList.add('hidden');
+    return;
+  }
+  const sevClass = { HIGH: 'warn-high', MEDIUM: 'warn-medium', LOW: 'warn-low' };
+  banner.innerHTML = warnings.map(w =>
+    `<div class="bias-warning ${sevClass[w.severity] || 'warn-medium'}">
+       <span class="warn-icon">⚠</span>
+       <span class="warn-text"><strong>${w.severity}</strong> — ${w.message}</span>
+     </div>`
+  ).join('');
+  banner.classList.remove('hidden');
+}
+
+// ── monte carlo ───────────────────────────────────────────────────────────────
+function _renderMonteCarlo(mc, trades) {
+  const row = document.getElementById('bt-row-mc');
+  if (!mc || !mc.ok || !mc.p5 || !mc.p5.length) {
+    row.classList.add('hidden');
+    return;
+  }
+  row.classList.remove('hidden');
+
+  const palette = _palette();
+  const n       = mc.n_trades;
+  const xs      = Array.from({ length: n }, (_, i) => i + 1);
+
+  // Observed equity from trades (cumulative product)
+  let eq = 1;
+  const obsY = trades.map(t => { eq *= (1 + t.return_pct / 100); return +eq.toFixed(4); });
+
+  const traces = [
+    {
+      x: xs, y: mc.p95,
+      name: '95th pct',
+      type: 'scatter', mode: 'lines',
+      line: { color: 'rgba(0,191,160,0.3)', width: 0 },
+      fill: 'tonexty', fillcolor: 'rgba(0,191,160,0.08)',
+      showlegend: false,
+    },
+    {
+      x: xs, y: mc.p5,
+      name: '5th pct',
+      type: 'scatter', mode: 'lines',
+      line: { color: 'rgba(0,191,160,0.3)', width: 0 },
+      showlegend: false,
+    },
+    {
+      x: xs, y: mc.p50,
+      name: 'Median sim',
+      type: 'scatter', mode: 'lines',
+      line: { color: palette.accent2, width: 1.2, dash: 'dot' },
+    },
+    {
+      x: xs, y: obsY,
+      name: 'Observed',
+      type: 'scatter', mode: 'lines',
+      line: { color: palette.accent1, width: 1.8 },
+    },
+  ];
+
+  const layout = _baseLayout({
+    xaxis: { title: 'Trade #', ...palette.axis },
+    yaxis: { title: 'Equity (×1)', tickformat: '.2f', ...palette.axis },
+    height: 200,
+    margin: { t: 10, r: 14, b: 44, l: 52 },
+    showlegend: true,
+    legend: { x: 0.01, y: 0.99, bgcolor: 'transparent',
+              font: { color: palette.textDim, size: 10 } },
+  });
+
+  Plotly.newPlot('chart-mc', traces, layout, _plotlyConfig());
+
+  const fmt2 = v => v != null ? (+v).toFixed(3) : '—';
+  const pct  = v => v != null ? (+(v * 100)).toFixed(1) + '%' : '—';
+  document.getElementById('mc-stats').innerHTML =
+    `<span class="mc-stat"><span class="mc-k">Sims</span><span class="mc-v">${mc.n_sims}</span></span>` +
+    `<span class="mc-stat"><span class="mc-k">5th pct final</span><span class="mc-v">${fmt2(mc.final_p5)}</span></span>` +
+    `<span class="mc-stat"><span class="mc-k">Median final</span><span class="mc-v">${fmt2(mc.final_p50)}</span></span>` +
+    `<span class="mc-stat"><span class="mc-k">95th pct final</span><span class="mc-v">${fmt2(mc.final_p95)}</span></span>` +
+    `<span class="mc-stat"><span class="mc-k">Obs. final</span><span class="mc-v">${fmt2(mc.observed_final)}</span></span>` +
+    `<span class="mc-stat"><span class="mc-k">% sims worse</span><span class="mc-v">${pct(mc.pct_sims_beat_obs)}</span></span>`;
+}
+
+// ── wfo rendering ─────────────────────────────────────────────────────────────
+function _renderWfo(d) {
+  // Show WFO panel, hide IS/OOS panels
+  document.getElementById('bt-row-wfo').classList.remove('hidden');
+  _setPanelState('panel-wfo', 'content');
+
+  // Hide IS/OOS panels
+  ['panel-equity', 'panel-drawdown', 'panel-trades', 'panel-metrics'].forEach(id => {
+    _setPanelState(id, 'idle');
+  });
+
+  // WFO summary chips
+  const s    = d.wfo_summary || {};
+  const fmt2 = v => v != null ? (+v).toFixed(2) : '—';
+  const pct1 = v => v != null ? (+(v * 100)).toFixed(0) + '%' : '—';
+  document.getElementById('wfo-summary-chips').innerHTML =
+    `<span class="wfo-chip">Avg OOS SR: <b>${fmt2(s.avg_oos_sharpe)}</b></span>` +
+    `<span class="wfo-chip">Std: <b>${fmt2(s.std_oos_sharpe)}</b></span>` +
+    `<span class="wfo-chip">Consistency: <b>${pct1(s.consistency_score)}</b></span>` +
+    `<span class="wfo-chip">Avg Degrad.: <b>${pct1(s.avg_degradation)}</b></span>`;
+
+  // Stitched OOS equity chart
+  const palette = _palette();
+  const curve   = d.oos_equity || [];
+  if (curve.length) {
+    const xs = curve.map(r => r.date);
+    const ys = curve.map(r => r.equity);
+    Plotly.newPlot('chart-wfo-equity', [{
+      x: xs, y: ys,
+      name: 'OOS equity (stitched)',
+      type: 'scatter', mode: 'lines',
+      line: { color: palette.accent1, width: 1.8 },
+      fill: 'tozeroy', fillcolor: 'rgba(59,122,232,0.05)',
+    }], _baseLayout({
+      xaxis: { type: 'date', tickformat: '%b %Y', ...palette.axis },
+      yaxis: { tickformat: '.2f', ...palette.axis },
+      height: 200,
+      margin: { t: 10, r: 14, b: 36, l: 52 },
+    }), _plotlyConfig());
+  }
+
+  // Fold table
+  const tbody = document.getElementById('wfo-fold-body');
+  if (!d.folds || !d.folds.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="no-data">No folds.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = d.folds.map(f => {
+    const isS   = (f.is_metrics  && f.is_metrics.sharpe  != null) ? (+f.is_metrics.sharpe).toFixed(2)  : '—';
+    const oosS  = (f.oos_metrics && f.oos_metrics.sharpe != null) ? (+f.oos_metrics.sharpe).toFixed(2) : '—';
+    const deg   = f.degradation != null ? (+(f.degradation * 100)).toFixed(0) + '%' : '—';
+    const degCls = (f.degradation || 0) > 0.5 ? 'neg' : (f.degradation || 0) < 0.2 ? 'pos' : '';
+    const oosCls = (f.oos_metrics && (f.oos_metrics.sharpe || 0)) > 0 ? 'pos' : 'neg';
+    return `<tr>
+      <td><b>${f.fold}</b></td>
+      <td>${f.is_start} → ${f.is_end}</td>
+      <td>${f.oos_start} → ${f.oos_end}</td>
+      <td>${isS}</td>
+      <td class="${oosCls}">${oosS}</td>
+      <td class="${degCls}">${deg}</td>
+      <td>${f.is_trades}</td>
+      <td>${f.oos_trades}</td>
+    </tr>`;
+  }).join('');
 }
 
 // ── IS/OOS dividers ───────────────────────────────────────────────────────────

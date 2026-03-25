@@ -104,6 +104,35 @@
         </div>
       </div>
 
+      <!-- ── Run mode toggle ─────────────────────────────────────────── -->
+      <div class="ctrl-section">
+        <div class="ctrl-label">Run Mode</div>
+        <div class="ctrl-mode-toggle">
+          <button id="mode-isoos" class="mode-btn active" onclick="setRunMode('isoos', this)">IS / OOS</button>
+          <button id="mode-wfo"   class="mode-btn"        onclick="setRunMode('wfo',   this)">WFO</button>
+        </div>
+      </div>
+
+      <!-- ── WFO-specific controls (shown when WFO mode active) ────────── -->
+      <div id="ctrl-wfo-section" class="ctrl-section hidden">
+        <div class="ctrl-row">
+          <label class="ctrl-sub-label">Folds</label>
+          <input id="ctrl-n-folds" class="ctrl-input ctrl-num" type="number" value="5" min="3" max="10">
+        </div>
+        <div class="ctrl-row">
+          <label class="ctrl-sub-label">OOS %</label>
+          <input id="ctrl-oos-ratio" class="ctrl-input ctrl-num" type="number" value="30" min="10" max="40" step="5">
+          <span class="ctrl-unit">%</span>
+        </div>
+        <div class="ctrl-row">
+          <label class="ctrl-sub-label">Window</label>
+          <select id="ctrl-wfo-mode" class="ctrl-select ctrl-select-sm">
+            <option value="rolling" selected>Rolling</option>
+            <option value="anchored">Anchored</option>
+          </select>
+        </div>
+      </div>
+
       <button id="btn-run" class="btn-run" onclick="runBacktest()">Run Backtest</button>
 
       <div id="bt-meta" class="bt-meta hidden">
@@ -119,6 +148,9 @@
 
     <!-- ── RIGHT CONTENT ──────────────────────────────────────────────── -->
     <div id="bt-content">
+
+      <!-- ── Bias warnings banner (shown when issues detected) ──────── -->
+      <div id="bias-warnings-banner" class="hidden"></div>
 
       <!-- ── TOP ROW: equity + drawdown ─────────────────────────────── -->
       <div id="bt-row-equity">
@@ -244,6 +276,52 @@
         </div>
 
       </div><!-- /bt-row-bottom -->
+
+      <!-- ── Monte Carlo panel (always shown after IS/OOS run) ─────── -->
+      <div id="bt-row-mc" class="hidden">
+        <div class="bt-panel bt-panel-wide" id="panel-mc">
+          <div class="panel-header">
+            <span class="panel-title">Monte Carlo — Trade Sequence Permutation (1 000 sims)</span>
+          </div>
+          <div class="panel-body">
+            <div data-role="content" id="chart-mc" class="panel-chart" style="height:200px;"></div>
+            <div id="mc-stats" class="mc-stats"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── WFO panel (shown only in WFO mode) ────────────────────── -->
+      <div id="bt-row-wfo" class="hidden">
+        <div class="bt-panel bt-panel-wide" id="panel-wfo">
+          <div class="panel-header">
+            <span class="panel-title">Walk-Forward Optimisation — OOS Equity (stitched)</span>
+            <div id="wfo-summary-chips" class="wfo-chips"></div>
+          </div>
+          <div class="panel-body">
+            <div data-role="loading" class="panel-state hidden"><div class="spinner"></div>Running WFO…</div>
+            <div data-role="error"   class="panel-state hidden state-error">WFO failed.</div>
+            <div data-role="content" class="hidden">
+              <div id="chart-wfo-equity" style="height:200px;"></div>
+              <div class="wfo-fold-label">Per-Fold Breakdown</div>
+              <table id="wfo-fold-table" class="wfo-table">
+                <thead>
+                  <tr>
+                    <th>Fold</th>
+                    <th>IS Period</th>
+                    <th>OOS Period</th>
+                    <th>IS Sharpe</th>
+                    <th>OOS Sharpe</th>
+                    <th>Degradation</th>
+                    <th>IS Trades</th>
+                    <th>OOS Trades</th>
+                  </tr>
+                </thead>
+                <tbody id="wfo-fold-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
 
     </div><!-- /bt-content -->
 
