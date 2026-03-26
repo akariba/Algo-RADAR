@@ -907,3 +907,22 @@ function shareLinkedIn(e) {
     })
     .catch(() => {});
 })();
+
+// ── welcome banner ────────────────────────────────────────────────────────────
+(function initBanner() {
+  if (localStorage.getItem('sybil_banner_dismissed')) return;
+  const el = document.getElementById('welcome-banner');
+  if (el) el.classList.remove('hidden');
+})();
+
+function dismissBanner() {
+  localStorage.setItem('sybil_banner_dismissed', '1');
+  const el = document.getElementById('welcome-banner');
+  if (el) {
+    el.style.animation = 'none';
+    el.style.opacity   = '0';
+    el.style.transform = 'translateX(-50%) translateY(20px)';
+    el.style.transition = 'opacity 0.3s, transform 0.3s';
+    setTimeout(() => el.classList.add('hidden'), 300);
+  }
+}
