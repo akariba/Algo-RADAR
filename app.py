@@ -311,7 +311,7 @@ def tape():
             try:
                 import yfinance as yf
                 tk   = yf.Ticker(sym)
-                hist = tk.history(period="2d", interval="1d", auto_adjust=True)
+                hist = tk.history(period="5d", interval="1d", auto_adjust=True)
                 if hist is not None and len(hist) >= 2:
                     p0   = float(hist["Close"].iloc[-2])
                     p1   = float(hist["Close"].iloc[-1])

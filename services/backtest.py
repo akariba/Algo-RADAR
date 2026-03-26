@@ -744,8 +744,8 @@ def run_wfo(params: dict) -> dict:
     except Exception as exc:
         return {'ok': False, 'error': f"Price download failed: {exc}"}
 
-    if hist is None or hist.empty or len(hist) < 100:
-        return {'ok': False, 'error': f"Insufficient data ({len(hist) if hist is not None else 0} bars, need ≥100)"}
+    if hist is None or hist.empty or len(hist) < 60:
+        return {'ok': False, 'error': f"Insufficient data ({len(hist) if hist is not None else 0} bars, need ≥60)"}
 
     closes  = hist['Close'].values.astype(float)
     highs   = hist['High'].values.astype(float)
@@ -928,8 +928,8 @@ def run_backtest(params: dict) -> dict:
     except Exception as exc:
         return {'ok': False, 'error': f"Price download failed for {ticker}: {exc}"}
 
-    if hist is None or hist.empty or len(hist) < 60:
-        return {'ok': False, 'error': f"Insufficient data for {ticker} ({len(hist) if hist is not None else 0} bars, need ≥60)"}
+    if hist is None or hist.empty or len(hist) < 30:
+        return {'ok': False, 'error': f"Insufficient data for {ticker} ({len(hist) if hist is not None else 0} bars, need ≥30)"}
 
     closes  = hist['Close'].values.astype(float)
     highs   = hist['High'].values.astype(float)
