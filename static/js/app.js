@@ -890,7 +890,7 @@ function timeAgo(ms) {
 // ── LinkedIn share ────────────────────────────────────────────────────────────
 function shareLinkedIn(e) {
   e.preventDefault();
-  const url = encodeURIComponent('https://sybil-radar.duckdns.org');
+  const url = encodeURIComponent('https://sybilradar.com');
   window.open('https://www.linkedin.com/sharing/share-offsite/?url=' + url,
     '_blank', 'width=600,height=600,noopener');
 }
