@@ -49,6 +49,12 @@ function setRunMode(mode, btn) {
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   document.getElementById('ctrl-wfo-section').classList.toggle('hidden', mode !== 'wfo');
+  if (mode === 'isoos') {
+    // Restore IS/OOS rows when switching back
+    document.getElementById('bt-row-equity').style.display = '';
+    document.getElementById('bt-row-bottom').style.display = '';
+    document.getElementById('bt-row-wfo').classList.add('hidden');
+  }
 }
 
 // ── advanced toggle ───────────────────────────────────────────────────────────
@@ -584,14 +590,15 @@ function _renderMonteCarlo(mc, trades) {
 
 // ── wfo rendering ─────────────────────────────────────────────────────────────
 function _renderWfo(d) {
-  // Show WFO panel, hide IS/OOS panels
+  // Collapse IS/OOS rows — they don't apply in WFO mode
+  document.getElementById('bt-row-equity').style.display = 'none';
+  document.getElementById('bt-row-bottom').style.display = 'none';
+  document.getElementById('bt-row-mc').classList.add('hidden');
+
+  // Show WFO panel and scroll into view
   document.getElementById('bt-row-wfo').classList.remove('hidden');
   _setPanelState('panel-wfo', 'content');
-
-  // Hide IS/OOS panels
-  ['panel-equity', 'panel-drawdown', 'panel-trades', 'panel-metrics'].forEach(id => {
-    _setPanelState(id, 'idle');
-  });
+  setTimeout(() => document.getElementById('bt-row-wfo').scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
 
   // WFO summary chips
   const s    = d.wfo_summary || {};
