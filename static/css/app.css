@@ -981,6 +981,43 @@ html, body {
   background: rgba(255,255,255,0.04);
 }
 
+#li-share {
+  flex-shrink: 0;
+  padding: 0 13px;
+  font-size: 9.5px;
+  font-weight: 700;
+  font-family: var(--sybil-mono);
+  letter-spacing: 0.07em;
+  color: #0a66c2;
+  border-left: 1px solid var(--sybil-border);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+  gap: 2px;
+}
+#li-share:hover {
+  color: #378fe9;
+  background: rgba(10,102,194,0.08);
+}
+
+#visit-counter {
+  flex-shrink: 0;
+  padding: 0 13px;
+  font-size: 9.5px;
+  font-family: var(--sybil-mono);
+  color: var(--sybil-text-muted);
+  border-left: 1px solid var(--sybil-border);
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
 /* ── chart toolbar (timeframe + toggles) ─────────────────────────────────── */
 #chart-toolbar {
   flex-shrink: 0;

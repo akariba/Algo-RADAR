@@ -216,9 +216,34 @@ def ai_research():
         return jsonify({"error": str(exc)}), 502
 
 
+_STATS_FILE = Path(__file__).parent / "data" / "stats.json"
+_stats_lock = threading.Lock()
+
+def _load_stats() -> dict:
+    try:
+        if _STATS_FILE.exists():
+            return json.loads(_STATS_FILE.read_text())
+    except Exception:
+        pass
+    return {"visits": 0}
+
+def _inc_visits():
+    with _stats_lock:
+        s = _load_stats()
+        s["visits"] = s.get("visits", 0) + 1
+        try:
+            _STATS_FILE.write_text(json.dumps(s))
+        except Exception:
+            pass
+
 @app.route("/")
 def index():
+    threading.Thread(target=_inc_visits, daemon=True).start()
     return render_template("index.html")
+
+@app.route("/api/stats")
+def stats():
+    return jsonify(_load_stats())
 
 
 @app.route("/lab/3d")

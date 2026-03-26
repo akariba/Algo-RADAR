@@ -886,3 +886,24 @@ function timeAgo(ms) {
     })
     .catch(() => {});
 })();
+
+// ── LinkedIn share ────────────────────────────────────────────────────────────
+function shareLinkedIn(e) {
+  e.preventDefault();
+  const url = encodeURIComponent('https://sybil-radar.duckdns.org');
+  window.open('https://www.linkedin.com/sharing/share-offsite/?url=' + url,
+    '_blank', 'width=600,height=600,noopener');
+}
+
+// ── Visit counter ─────────────────────────────────────────────────────────────
+(function fetchVisits() {
+  fetch('/api/stats')
+    .then(r => r.json())
+    .then(d => {
+      const el = document.getElementById('visit-count');
+      if (el && d.visits != null) {
+        el.textContent = d.visits.toLocaleString();
+      }
+    })
+    .catch(() => {});
+})();
