@@ -61,7 +61,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.config["SECRET_KEY"]                  = os.environ.get("FLASK_SECRET_KEY", "dev-secret-change-me")
+app.config["SQLALCHEMY_DATABASE_URI"]     = os.environ.get("DATABASE_URL", "sqlite:///sybil_dev.db")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["AWS_REGION"]                  = os.environ.get("AWS_REGION", "eu-central-1")
+app.config["SES_SENDER_EMAIL"]            = os.environ.get("SES_SENDER_EMAIL", "noreply@sybilradar.com")
+app.config["APP_BASE_URL"]                = os.environ.get("APP_BASE_URL", "http://localhost:5055")
+app.config["EMAIL_TOKEN_EXPIRY"]          = int(os.environ.get("EMAIL_TOKEN_EXPIRY", 86400))
 CORS(app)
+
+from auth.models import db
+from auth.routes import auth_bp, limiter
+db.init_app(app)
+limiter.init_app(app)
+app.register_blueprint(auth_bp)
+with app.app_context():
+    db.create_all()
 
 # ── universe ──────────────────────────────────────────────────────────────────
 
