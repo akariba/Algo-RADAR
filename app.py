@@ -255,6 +255,10 @@ def _inc_visits():
 def landing():
     return render_template("landing.html")
 
+@app.route("/login")
+def login_page():
+    return render_template("login.html")
+
 @app.route("/app")
 def index():
     threading.Thread(target=_inc_visits, daemon=True).start()
