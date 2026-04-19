@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SYBIL — Systematic Trading Research Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/landing.css">
+</head>
+<body>
+
+<!-- ── NAV ─────────────────────────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-logo">
+    <div class="nav-logo-mark">S</div>
+    SYBIL
+  </div>
+
+  <ul class="nav-links">
+    <li><a href="#features">Features</a></li>
+    <li><a href="/research/backtest">Backtest</a></li>
+    <li><a href="/lab/3d">3D Lab</a></li>
+    <li><a href="https://github.com/akariba/Algo-RADAR" target="_blank">GitHub</a></li>
+  </ul>
+
+  <div class="nav-actions">
+    <a href="/app" class="btn btn-ghost">Sign in</a>
+    <a href="/app" class="btn btn-primary">Launch Radar →</a>
+  </div>
+</nav>
+
+<!-- ── HERO ─────────────────────────────────────────────────────────────────── -->
+<section class="hero">
+  <canvas class="hero-canvas" id="heroCanvas"></canvas>
+
+  <div class="hero-badge">
+    <span class="hero-badge-dot"></span>
+    Live market signals · AWS EC2 · eu-central-1
+  </div>
+
+  <h1>
+    Systematic Trading<br>
+    <span>Research Platform</span>
+  </h1>
+
+  <p class="hero-sub">
+    Real-time cross-asset opportunity radar powered by quantitative signals,
+    GBM forecasting, and AI-assisted research. Built for systematic traders.
+  </p>
+
+  <div class="hero-actions">
+    <a href="/app" class="btn btn-accent">Get started →</a>
+    <a href="https://github.com/akariba/Algo-RADAR" target="_blank" class="btn btn-ghost">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12"/>
+      </svg>
+      View on GitHub
+    </a>
+  </div>
+
+  <div class="hero-stats">
+    <div class="hero-stat">
+      <div class="hero-stat-val">50+</div>
+      <div class="hero-stat-label">Instruments</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-val">6</div>
+      <div class="hero-stat-label">Asset Classes</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-val">Real-time</div>
+      <div class="hero-stat-label">Signal Engine</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-val">AWS</div>
+      <div class="hero-stat-label">Cloud Native</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── PARTNERS ─────────────────────────────────────────────────────────────── -->
+<div class="partners">
+  <div class="partners-label">Powered by</div>
+  <div class="partners-track" id="partnersTrack">
+    <!-- first copy -->
+    <div class="partner-item">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M13.527.099C6.955-.744.942 3.9.099 10.473c-.843 6.572 3.8 12.584 10.373 13.428 6.573.843 12.587-3.801 13.428-10.374C24.744 6.955 20.101.943 13.527.099zm2.471 7.485a.855.855 0 0 1 .concentrated 1.71H8.003a.855.855 0 1 1 0-1.71zm0 3.419a.855.855 0 0 1 0 1.71H8.003a.855.855 0 1 1 0-1.71z"/></svg>
+      AWS EC2
+    </div>
+    <div class="partner-item">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm.14 4.5c.97 0 1.76.79 1.76 1.76s-.79 1.76-1.76 1.76-1.76-.79-1.76-1.76.79-1.76 1.76-1.76zM15 17.25H9.75v-1.5H12V10.5H9.75V9H13.5v6.75H15v1.5z"/></svg>
+      Interactive Brokers
+    </div>
+    <div class="partner-item">🐍 Python / Flask</div>
+    <div class="partner-item">☁️ Cloudflare</div>
+    <div class="partner-item">📊 Plotly</div>
+    <div class="partner-item">🤖 Perplexity AI</div>
+    <div class="partner-item">📦 yFinance</div>
+    <div class="partner-item">🔒 AWS SES</div>
+    <div class="partner-item">🗄️ PostgreSQL</div>
+    <div class="partner-item">⚙️ Gunicorn / Nginx</div>
+    <!-- duplicate for seamless loop -->
+    <div class="partner-item">
+      AWS EC2
+    </div>
+    <div class="partner-item">Interactive Brokers</div>
+    <div class="partner-item">🐍 Python / Flask</div>
+    <div class="partner-item">☁️ Cloudflare</div>
+    <div class="partner-item">📊 Plotly</div>
+    <div class="partner-item">🤖 Perplexity AI</div>
+    <div class="partner-item">📦 yFinance</div>
+    <div class="partner-item">🔒 AWS SES</div>
+    <div class="partner-item">🗄️ PostgreSQL</div>
+    <div class="partner-item">⚙️ Gunicorn / Nginx</div>
+  </div>
+</div>
+
+<!-- ── FEATURES ─────────────────────────────────────────────────────────────── -->
+<section class="section" id="features">
+  <div class="section-tag">What's inside</div>
+  <h2 class="section-title">Everything you need<br>to trade systematically</h2>
+  <p class="section-sub">From real-time signal generation to backtesting and AI research — all in one platform.</p>
+
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">📡</div>
+      <div class="feature-title">Live Opportunity Radar</div>
+      <div class="feature-desc">Cross-asset signal engine scanning 50+ instruments across equities, futures, forex, and crypto in real-time.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📈</div>
+      <div class="feature-title">GBM Forecast Cone</div>
+      <div class="feature-desc">Geometric Brownian Motion price projection overlaid on live charts with volatility-adjusted confidence bands.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔬</div>
+      <div class="feature-title">Backtest Engine</div>
+      <div class="feature-desc">Walk-Forward Optimisation, Monte Carlo simulation, and Deflated Sharpe Ratio for strategy validation.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🤖</div>
+      <div class="feature-title">AI Research Assistant</div>
+      <div class="feature-desc">Perplexity-powered AI assistant for real-time macro research, instrument analysis, and trade rationale.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🧊</div>
+      <div class="feature-title">3D Research Lab</div>
+      <div class="feature-desc">Experimental 3D visualisations of market regimes, correlation surfaces, and volatility landscapes.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">⚡</div>
+      <div class="feature-title">Cloud Native on AWS</div>
+      <div class="feature-desc">Deployed on EC2 with Elastic IP, Nginx, Gunicorn, and Cloudflare CDN for global low-latency access.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA ──────────────────────────────────────────────────────────────────── -->
+<div class="cta-section">
+  <h2>Start trading systematically</h2>
+  <p>Access real-time signals, backtesting, and AI research — free and open source.</p>
+  <a href="/app" class="btn btn-accent">Launch Radar →</a>
+</div>
+
+<!-- ── FOOTER ───────────────────────────────────────────────────────────────── -->
+<footer>
+  <div class="footer-left">
+    <div class="nav-logo-mark" style="width:22px;height:22px;font-size:10px;border-color:#444;color:#888;">S</div>
+    © 2026 SYBIL · Ala-Eddine Karib
+  </div>
+  <div class="footer-links">
+    <a href="/app">App</a>
+    <a href="/research/backtest">Backtest</a>
+    <a href="https://github.com/akariba/Algo-RADAR" target="_blank">GitHub</a>
+    <a href="https://www.linkedin.com/in/ala-eddine-karib" target="_blank">LinkedIn</a>
+  </div>
+</footer>
+
+<script>
+// ── Animated canvas background ──────────────────────────────────────────────
+const canvas = document.getElementById('heroCanvas');
+const ctx = canvas.getContext('2d');
+let cols, drops;
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  cols  = Math.floor(canvas.width / 20);
+  drops = Array(cols).fill(1);
+}
+
+function draw() {
+  ctx.fillStyle = 'rgba(10,10,10,0.05)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#00e5a0';
+  ctx.font = '12px monospace';
+  drops.forEach((y, i) => {
+    const char = String.fromCharCode(0x30A0 + Math.random() * 96);
+    ctx.fillText(char, i * 20, y * 20);
+    if (y * 20 > canvas.height && Math.random() > 0.975) drops[i] = 0;
+    drops[i]++;
+  });
+}
+
+resize();
+window.addEventListener('resize', resize);
+setInterval(draw, 50);
+</script>
+
+</body>
+</html>

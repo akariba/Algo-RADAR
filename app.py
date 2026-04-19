@@ -252,6 +252,10 @@ def _inc_visits():
             pass
 
 @app.route("/")
+def landing():
+    return render_template("landing.html")
+
+@app.route("/app")
 def index():
     threading.Thread(target=_inc_visits, daemon=True).start()
     return render_template("index.html")
